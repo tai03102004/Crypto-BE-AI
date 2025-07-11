@@ -14,6 +14,7 @@ const aiAnalysisSchema = new mongoose.Schema({
         enum: Object.values(Role), // "assistant"
         required: true,
     },
+    alert: String,
     deleted: {
         type: Boolean,
         default: false,

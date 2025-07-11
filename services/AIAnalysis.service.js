@@ -18,10 +18,10 @@ class AIAnalysisService {
                 model: "meta-llama/Llama-3.3-70B-Instruct",
                 messages: [{
                         role: 'system',
-                        content: `Bạn là một chuyên gia phân tích cryptocurrency và trading. 
-                        Hãy đưa ra phân tích chi tiết và CỤ THỂ các tín hiệu giao dịch với giá rõ ràng.
-                        Luôn bao gồm: Entry Point, Stop Loss, Take Profit, và Timeframe.
-                        Phân tích dựa trên cả technical analysis và market context.`
+                        content: `
+                            You are a professional cryptocurrency trading analyst.
+                            Use technical analysis + market context to provide detailed, high-quality trade setups.
+                            Output must be concise, clear, and structured.`
                     },
                     {
                         role: 'user',
@@ -60,56 +60,56 @@ class AIAnalysisService {
     createEnhancedAnalysisPrompt(cryptoData, indicators, historicalData) {
         const formattedHistoricalData = this.formatHistoricalData(historicalData);
         return `
-            PHÂN TÍCH CRYPTO VÀ TÍN HIỆU GIAO DỊCH
-
-            === DỮ LIỆU HIỆN TẠI ===
-            ${JSON.stringify(cryptoData, null, 2)}
-
-            === CHỈ BÁO KỸ THUẬT ===
-            ${JSON.stringify(indicators, null, 2)}
-
-            === DỮ LIỆU LỊCH SỬ 30 NGÀY ===
-            ${formattedHistoricalData ? JSON.stringify(formattedHistoricalData, null, 2) : 'Không có dữ liệu lịch sử'}
-
-            === YÊU CẦU PHÂN TÍCH ===
-
-            1. **PHÂN TÍCH XU HƯỚNG**:
-            - Xu hướng ngắn hạn (1-3 ngày)
-            - Xu hướng trung hạn (1-2 tuần)
-            - Xu hướng dài hạn (1-3 tháng)
-
-            2. **ĐÁNH GIÁ CHỈ BÁO KỸ THUẬT**:
-            - RSI: Vùng quá mua/quá bán
-            - MACD: Tín hiệu mua/bán
-            - Support/Resistance levels
-            - Sử dụng đường EMA phân tích 
-
-            3. **TÍN HIỆU GIAO DỊCH CỤ THỂ** (cho từng coin):
-            - **Action**: BUY/SELL/HOLD
-            - **Entry Point**: Giá vào lệnh cụ thể ($)
-            - **Stop Loss**: Giá cắt lỗ ($) và % risk
-            - **Take Profit 1**: Mục tiêu chốt lời ngắn hạn ($)
-            - **Take Profit 2**: Mục tiêu chốt lời dài hạn ($)
-            - **Timeframe**: Khung thời gian hold (hours/days/weeks)
-            - **Position Size**: Khuyến nghị % portfolio
-            - **Risk Level**: LOW/MEDIUM/HIGH
-
-            4. **CẢNH BÁO RỦI RO**:
-            - Điều kiện hủy lệnh
-            - Sự kiện có thể ảnh hưởng
-            - Mức độ tin cậy của tín hiệu
-
-            5. **MARKET CONTEXT**:
-            - Tình hình thị trường chung
-            - Factors có thể ảnh hưởng
-            - Correlation với Bitcoin, Ethereum
-
-            Hãy trả lời bằng tiếng Việt, chi tiết và cụ thể với số liệu rõ ràng (minh chứng đúng).
-            Tránh sử dụng từ ngữ chung chung, hãy đi vào chi tiết cụ thể.
-            Tránh lặp lại thông tin, hãy cung cấp phân tích mới mẻ và sâu sắc.
-            Trình bày rõ ràng, dễ hiểu và có cấu trúc logic, gạch đầu dòng và thụt lề đúng.
-        `;
+            DATA:
+                - Current Price Data:
+                ${JSON.stringify(cryptoData, null, 2)}
+                
+                - Technical Indicators:
+                ${JSON.stringify(indicators, null, 2)}
+                
+                - 30-Day Historical Data:
+                ${formattedHistoricalData || 'No data available'}
+            
+            TASK:
+                Analyze ALL crypto assets provided in the data and generate trade setups for EACH coin.
+                
+                **IMPORTANT FORMATTING RULES:**
+                - Use clear section headers with emojis
+                - Keep explanations concise (max 2 sentences per point)
+                - Use bullet points for key data
+                - Structure response in exactly this format:
+                
+                ## 📊 Market Overview
+                Brief 1-2 sentence summary of current market conditions.
+                
+                ## 🎯 Trade Setup: [COIN_NAME]
+                **Signal:** [BUY/SELL/HOLD] 
+                **Confidence:** [X%]
+                
+                ### 📈 Technical Analysis
+                • **Trend:** [Short description]
+                • **RSI:** [Value] - [Interpretation]
+                • **MACD:** [Interpretation]
+                • **Support/Resistance:** [Levels]
+                
+                ### 💰 Trade Parameters
+                • **Entry:** $[price]
+                • **Stop Loss:** $[price] 
+                • **Take Profit 1:** $[price]
+                • **Take Profit 2:** $[price]
+                • **Position Size:** [X%]
+                • **Timeframe:** [duration]
+                
+                ### ⚠️ Risk Assessment
+                • **Risk Level:** [Low/Medium/High]
+                • **Key Risks:** [Brief points]
+                • **Invalidation:** [Conditions]
+                
+                Keep each section concise and data-driven. Maximum 300 words total.
+            `;
     }
+
+
 
     formatHistoricalData(historicalData) {
         if (!historicalData) return 'Không có dữ liệu lịch sử';
@@ -202,14 +202,31 @@ class AIAnalysisService {
     calculateConfidence(aiAnalysis, coinId) {
         // Simple confidence calculation based on keywords
         const confidenceKeywords = [
-            'chắc chắn', 'rõ ràng', 'mạnh mẽ', 'tin cậy', 'đáng tin',
-            'rủi ro thấp', 'tín hiệu tốt', 'xu hướng rõ', 'support mạnh'
+            'confident',
+            'clear signal',
+            'strong trend',
+            'reliable',
+            'low risk',
+            'confirmed setup',
+            'high probability',
+            'strong support',
+            'momentum building',
+            'bullish confirmation'
         ];
 
         const lowConfidenceKeywords = [
-            'không chắc', 'rủi ro cao', 'biến động', 'thận trọng', 'cảnh báo',
-            'khó dự đoán', 'không rõ', 'chưa chắc chắn'
+            'uncertain',
+            'high risk',
+            'volatile',
+            'caution advised',
+            'weak signal',
+            'unconfirmed',
+            'hard to predict',
+            'no clear direction',
+            'unstable conditions',
+            'reversal warning'
         ];
+
 
         let confidence = 50; // Base confidence
 
@@ -230,14 +247,28 @@ class AIAnalysisService {
     calculateConfidence(aiAnalysis, coinId) {
         // Simple confidence calculation based on keywords
         const confidenceKeywords = [
-            'chắc chắn', 'rõ ràng', 'mạnh mẽ', 'tin cậy', 'đáng tin',
-            'rủi ro thấp', 'tín hiệu tốt', 'xu hướng rõ', 'support mạnh'
+            'certain',
+            'clear',
+            'strong',
+            'reliable',
+            'trustworthy',
+            'low risk',
+            'good signal',
+            'clear trend',
+            'strong support'
         ];
 
         const lowConfidenceKeywords = [
-            'không chắc', 'rủi ro cao', 'biến động', 'thận trọng', 'cảnh báo',
-            'khó dự đoán', 'không rõ', 'chưa chắc chắn'
+            'uncertain',
+            'high risk',
+            'volatile',
+            'cautious',
+            'warning',
+            'unpredictable',
+            'unclear',
+            'not yet confirmed'
         ];
+
 
         let confidence = 50; // Base confidence
 

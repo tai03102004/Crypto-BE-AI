@@ -102,7 +102,9 @@ export const performAnalysis = async (req, res) => {
     await AiAnalysis.create({
         conversationId: `crypto_analysis + ${conversationId}`,
         content: `Crypto analysis completed. AI Analysis: ${aiAnalysis.analysis}`,
+        alert: `Crypto analysis completed. AI alert: ${getAlerts().slice(-10).map(alert => alert.message).join(', ')}`,
         imagesUrl: [],
+
         role: "assistant",
     });
 

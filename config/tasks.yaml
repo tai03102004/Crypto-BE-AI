@@ -1,0 +1,91 @@
+news_collecting:
+  description: >
+    Search and summarize the 3 most impactful news articles affecting the global crypto market — particularly Bitcoin and Ethereum —
+    in the past 3 months from today's date ({current_date}).
+
+    Workflow:
+    1. Use the `SerperDevTool` to search for major macroeconomic and global financial policy news (e.g., interest rates, inflation,
+      fiscal policies, exchange rates, government investments) that have a significant impact on the crypto market. Prioritize reliable sources.
+    2. Select the 3 most influential articles based on impact, credibility, and relevance to the global crypto market. DO NOT include sources from vietstock.vn.
+    3. Use `ScrapeWebsiteTool` to extract full content from the selected articles. DO NOT scrape vietstock.vn.
+    4. Summarize each article in 3–5 sentences, focusing on how the news affects the crypto market (especially BTC & ETH).
+
+    Constraints:
+    - Only select articles published within the last 3 months.
+    - DO NOT use or refer to vietstock.vn content.
+    - Choose articles that clearly influence the global financial/crypto market.
+    - You must not fabricate or invent content. All output must be based on the tools' extracted data.
+  expected_output: >
+    A markdown list of 3 items, each containing:
+    - **Article Title**
+    - Publish Date
+    - Source (with URL link)
+    - Summary (3–5 sentences in English focusing on the impact on Bitcoin and Ethereum)
+
+  agent: stock_news_researcher
+
+fundamental_analysis:
+  description: >
+    Perform a fundamental analysis of the cryptocurrency {symbol} (BTC or ETH) to assess valuation and project health.
+
+    Workflow:
+    1. Use the `fund_tool` to retrieve data such as network activity, developer activity, adoption rate, transaction volume,
+      tokenomics (supply issuance/inflation), and on-chain metrics.
+    2. Identify the category of the crypto asset (e.g., Layer 1, smart contract platform).
+    3. Compare valuation metrics (e.g., NVT ratio, market cap, total value locked) with similar assets in the same category.
+    4. Analyze all indicators to assess long-term sustainability and valuation.
+
+    Analysis Date: {current_date}
+  expected_output: >
+    A 2–3 paragraph report in English including:
+    - Valuation assessment: undervalued / overvalued / fairly valued
+    - Evaluation of fundamental health (network growth, usage, adoption, sustainability)
+    - Overall comment on long-term outlook
+  agent: crypto_fundamental_analyst
+
+technical_analysis:
+  description: >
+    Evaluate the short-term price trend of {symbol} (BTC or ETH) on {current_date} using technical analysis.
+
+    Workflow:
+    1. Use the `tech_tool` to gather technical indicators: SMA, EMA, RSI, MACD, trading volume, OBV, support/resistance levels.
+    2. Identify the current trend (uptrend, downtrend, sideways).
+    3. Assess momentum and potential trading signals.
+
+  expected_output: >
+    A 2–3 paragraph report in English including:
+    - Current trend direction
+    - Analysis of technical signals (e.g., RSI overbought/oversold, MACD crossover)
+    - Overall trading sentiment and entry/exit timing recommendation
+
+  agent: crypto_technical_analyst
+
+investment_decision:
+  description: >
+    Based on the combined results of news analysis, fundamental analysis, and technical analysis for {symbol} (BTC or ETH), 
+    evaluate the investment opportunity using a scoring system and give a clear investment recommendation.
+
+    Workflow:
+    1. Summarize each component analysis: macro/news, fundamental, technical.
+    2. Assign a score (0–10) to each factor with a short rationale.
+    3. Calculate an overall score (average or weighted logic).
+    4. Provide a clear recommendation: **BUY**, **HOLD**, or **SELL** based on the score:
+      - **BUY**: score ≥ 7.5
+      - **HOLD**: 4.0 ≤ score < 7.5
+      - **SELL**: score < 4.0
+    5. If recommendation is HOLD: propose price levels for potential BUY and SELL actions based on technical analysis.
+
+    Notes:
+    - A recommendation is **required** in all cases.
+    - Conclusion must be grounded in the combined score of all 3 components.
+    - Prioritize actionable and professional-grade insights.
+
+  expected_output: >
+    A structured English report with the following format:
+    - Asset name (Bitcoin or Ethereum) and category (e.g., Layer 1)
+    - **Macroeconomic/News Analysis**: ~200 words + score (0–10) + reason
+    - **Fundamental Analysis**: ~200 words + score (0–10) + reason
+    - **Technical Analysis**: ~200 words + score (0–10) + reason
+    - **Conclusion**: final score (e.g., 7.8/10) and clear investment recommendation: BUY / HOLD / SELL
+    - **If HOLD**: suggest two target price levels (BUY & SELL) based on current market conditions
+  agent: crypto_investment_strategist
