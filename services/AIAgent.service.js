@@ -3,12 +3,12 @@ import cron from 'node-cron';
 import {
     Telegraf
 } from 'telegraf';
+import coinGeckoService from './CoinGecko.service.js';
 /**
  * AI Agent Service Class
  */
 class AIAnalysisService {
     constructor() {
-        this.config = null;
         this.bot = null;
         this.aiAgent = null;
         this.cronJobs = [];
@@ -41,9 +41,9 @@ class AIAnalysisService {
         // Khởi tạo AI Agent
         this.aiAgent = {
             name: this.config.aiName || "Crypto Analysis Agent",
-            instructions: this.config.aiInstructions,
+            instructions: this.config.aiInstructions || "You are an assistant professional cryptocurrency trading analyst.",
             model: this.config.aiModel || "meta-llama/Llama-3.3-70B-Instruct",
-            apiKey: this.config.aiApiKey,
+            apiKey: this.config.aiApiKey || 'io-v2-eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJvd25lciI6Ijc1NjNiM2I4LWU3OTEtNGFjMi04YTY1LTg0ZjU3ODkyNDM5NSIsImV4cCI6NDkwNTIwMjQ4Nn0.hYGWdOQVRdbhUYF_IQD1Qd-HNOg7i9NRmhj1PMkDHtS-hK5C0JMqVBF8O31URDswDEVdQIdM2p3is-TXpwxjRw',
             baseUrl: this.config.aiBaseUrl || "https://api.intelligence.io.solutions/api/v1",
             headers: {
                 'Authorization': `Bearer ${this.config.aiApiKey}`,
@@ -52,7 +52,7 @@ class AIAnalysisService {
         };
 
         // Khởi tạo Telegram Bot
-        this.bot = new Telegraf(this.config.telegramToken);
+        this.bot = new Telegraf('8134723930:AAEZWYUfKmArVSJ2GoLtOfVAhRMHTL12gFo');
 
         console.log('✅ AIAnalysisService initialized');
         return this;
@@ -96,51 +96,6 @@ class AIAnalysisService {
     }
 
     /**
-     * Lấy dữ liệu cryptocurrency
-     * @param {string} symbol - Symbol của coin
-     * @returns {Promise<Object>} - Dữ liệu coin
-     */
-    async getCryptoData(symbol) {
-        try {
-            const response = await axios.get('https://api.coingecko.com/api/v3/simple/price', {
-                params: {
-                    ids: symbol,
-                    vs_currencies: 'usd',
-                    include_24hr_change: true,
-                    include_market_cap: true,
-                    include_24hr_vol: true
-                },
-                timeout: 10000
-            });
-
-            return response.data[symbol];
-        } catch (error) {
-            console.error(`❌ Error fetching ${symbol}:`, error.message);
-            throw new Error(`Không thể lấy dữ liệu ${symbol}`);
-        }
-    }
-
-    /**
-     * Tính toán chỉ số kỹ thuật
-     * @param {string} symbol - Symbol của coin
-     * @returns {Promise<Object>} - Chỉ số kỹ thuật
-     */
-    async getTechnicalIndicators(symbol) {
-        // Mock data - trong thực tế sẽ gọi API thật
-        return {
-            rsi: Math.floor(Math.random() * 100),
-            macd: (Math.random() - 0.5) * 10,
-            ema: Math.floor(Math.random() * 50000),
-            volume: Math.floor(Math.random() * 1000000000),
-            bollinger: {
-                upper: Math.floor(Math.random() * 60000),
-                lower: Math.floor(Math.random() * 40000)
-            },
-            sma: Math.floor(Math.random() * 45000)
-        };
-    }
-
-    /**
      * Kiểm tra điều kiện cảnh báo
      * @param {string} symbol - Symbol
      * @param {number} currentPrice - Giá hiện tại
@@ -175,23 +130,23 @@ class AIAnalysisService {
         const coinName = symbol.charAt(0).toUpperCase() + symbol.slice(1);
 
         return `
-${emoji} <b>CẢNH BÁO ${coinName.toUpperCase()}</b>
+            ${emoji} <b>CẢNH BÁO ${coinName.toUpperCase()}</b>
 
-💰 <b>Giá:</b> $${priceData.usd.toFixed(2)}
-📊 <b>24h:</b> ${priceData.usd_24h_change.toFixed(2)}% (${trend})
-📈 <b>Volume:</b> $${(priceData.usd_24h_vol / 1000000).toFixed(2)}M
-💎 <b>Cap:</b> $${(priceData.usd_market_cap / 1000000000).toFixed(2)}B
+            💰 <b>Giá:</b> $${priceData.usd.toFixed(2)}
+            📊 <b>24h:</b> ${priceData.usd_24h_change.toFixed(2)}% (${trend})
+            📈 <b>Volume:</b> $${(priceData.usd_24h_vol / 1000000).toFixed(2)}M
+            💎 <b>Cap:</b> $${(priceData.usd_market_cap / 1000000000).toFixed(2)}B
 
-📋 <b>Chỉ số kỹ thuật:</b>
-• RSI: ${techData.rsi} ${techData.rsi > 70 ? '🔴' : techData.rsi < 30 ? '🟢' : '🟡'}
-• MACD: ${techData.macd.toFixed(2)}
-• EMA: $${techData.ema.toFixed(2)}
-• SMA: $${techData.sma.toFixed(2)}
+            📋 <b>Chỉ số kỹ thuật:</b>
+            • RSI: ${techData.rsi} ${techData.rsi > 70 ? '🔴' : techData.rsi < 30 ? '🟢' : '🟡'}
+            • MACD: ${techData.macd.toFixed(2)}
+            • EMA: $${techData.ema.toFixed(2)}
+            • SMA: $${techData.sma.toFixed(2)}
 
-🤖 <b>Phân tích AI:</b>
-${aiAnalysis}
+            🤖 <b>Phân tích AI:</b>
+            ${aiAnalysis}
 
-⏰ <i>${new Date().toLocaleString('vi-VN')}</i>
+            ⏰ <i>${new Date().toLocaleString('vi-VN')}</i>
         `.trim();
     }
 
@@ -217,6 +172,27 @@ ${aiAnalysis}
     }
 
     /**
+     * Tính toán chỉ số kỹ thuật
+     * @param {string} symbol - Symbol của coin
+     * @returns {Promise<Object>} - Chỉ số kỹ thuật
+     */
+    async getTechnicalIndicators(symbol) {
+        // Mock data - trong thực tế sẽ gọi API thật
+        return {
+            rsi: Math.floor(Math.random() * 100),
+            macd: (Math.random() - 0.5) * 10,
+            ema: Math.floor(Math.random() * 50000),
+            volume: Math.floor(Math.random() * 1000000000),
+            bollinger: {
+                upper: Math.floor(Math.random() * 60000),
+                lower: Math.floor(Math.random() * 40000)
+            },
+            sma: Math.floor(Math.random() * 45000)
+        };
+    }
+
+
+    /**
      * Phân tích và gửi cảnh báo
      * @param {string} symbol - Symbol coin
      * @param {boolean} forceAlert - Bắt buộc gửi cảnh báo
@@ -224,11 +200,16 @@ ${aiAnalysis}
     async analyzeAndAlert(symbol, forceAlert = false) {
         try {
             console.log(`🔍 Analyzing ${symbol}...`);
+            console.log("CoinGecko: ", coinGeckoService.getCryptoPrices([symbol]))
+
 
             const [priceData, techData] = await Promise.all([
-                this.getCryptoData(symbol),
+                coinGeckoService.getCryptoPrices([symbol]),
                 this.getTechnicalIndicators(symbol)
             ]);
+
+            console.log("PriceData:", priceData);
+            console.log("TechData:", techData);
 
             const currentPrice = priceData.usd;
             const priceChange24h = priceData.usd_24h_change || 0;
@@ -247,7 +228,7 @@ ${aiAnalysis}
                 - MACD: ${techData.macd.toFixed(2)}
                 - EMA: ${techData.ema}
                 - SMA: ${techData.sma}
-                
+
                 Hãy phân tích và đưa ra nhận định ngắn gọn.
                 `;
 
@@ -286,8 +267,10 @@ ${aiAnalysis}
     async getMarketStatus() {
         try {
             const results = await Promise.all(
-                this.config.supportedCoins.map(coin => this.getCryptoData(coin))
+                this.config.supportedCoins.map(coin => coinGeckoService.getCryptoPrices([coin]))
             );
+
+            console.log("Result2:", results);
 
             const marketData = {};
             results.forEach((data, index) => {
@@ -323,6 +306,7 @@ ${aiAnalysis}
 
         this.bot.command('status', async (ctx) => {
             const result = await this.getMarketStatus();
+            console.log("Result: ", result);
             if (result.success) {
                 let message = '📊 <b>Trạng thái thị trường:</b>\n\n';
                 Object.entries(result.data).forEach(([coin, data]) => {
@@ -357,15 +341,15 @@ ${aiAnalysis}
 
         this.bot.command('help', (ctx) => {
             const help = `
-🤖 <b>Crypto Alert Bot</b>
+                🤖 <b>Crypto Alert Bot</b>
 
-<b>Lệnh:</b>
-/start - Khởi động
-/status - Trạng thái thị trường  
-/analyze [coin] - Phân tích coin
-/help - Hướng dẫn
+                <b>Lệnh:</b>
+                /start - Khởi động
+                /status - Trạng thái thị trường  
+                /analyze [coin] - Phân tích coin
+                /help - Hướng dẫn
 
-<b>Hỗ trợ:</b> ${this.config.supportedCoins.join(', ')}
+                <b>Hỗ trợ:</b> ${this.config.supportedCoins.join(', ')}
             `;
             ctx.reply(help, {
                 parse_mode: 'HTML'
@@ -480,6 +464,18 @@ ${aiAnalysis}
         };
     }
 }
+
+// class AIAnalysisService {
+//     constructor() {
+//         this.bot = new Telegraf("8134723930:AAEZWYUfKmArVSJ2GoLtOfVAhRMHTL12gFo");
+//         this.bot.start((ctx) => {
+//             console.log("ctx", ctx.chat.id);
+//             ctx.telegram.sendMessage(ctx.chat.id, 'hello');
+//         });
+
+//         this.bot.launch();
+//     }
+// }
 
 // Export singleton instance
 export default new AIAnalysisService();

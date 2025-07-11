@@ -59,16 +59,16 @@ app.use(methodOverride('_method'));
 route(app); // truyền app vào ứng dụng express
 
 // Schedule analysis every 5 minutes
-cron.schedule('0 * * * *', () => {
-    console.log('Running scheduled analysis every hour...');
-    performAnalysis();
-});
+// cron.schedule('0 * * * *', () => {
+//     console.log('Running scheduled analysis every hour...');
+//     performAnalysis();
+// });
 
 
 // Initial analysis on startup
-setTimeout(() => {
-    performAnalysis();
-}, 5000);
+// setTimeout(() => {
+//     performAnalysis();
+// }, 5000);
 
 
 app.listen(PORT, () => {
