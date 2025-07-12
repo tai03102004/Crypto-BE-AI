@@ -80,6 +80,31 @@ class CoinGeckoService {
 
         return historicalData;
     }
+
+    async getAllInfoCoin(coins = ['bitcoin', 'ethereum']) {
+        try {
+            const response = await axios.get(`${this.baseURL}/coins/markets`, {
+                params: {
+                    ids: coins.join(','),
+                    vs_currency: 'usd',
+                    include_24hr_change: true,
+                    include_24hr_vol: true,
+                    include_market_cap: true
+                },
+                headers: {
+                    accept: 'application/json',
+                    ...(this.apiKey && {
+                        'x-cg-pro-api-key': this.apiKey
+                    })
+
+                }
+            });
+            return response.data;
+        } catch (error) {
+            console.error('Error fetching crypto prices:', error.message);
+            return null;
+        }
+    }
 }
 
 export default new CoinGeckoService();
