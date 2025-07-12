@@ -1,4 +1,6 @@
 import axios from 'axios';
+import { predictLSTM } from "./LSTMForecast.service.js";
+
 // AI Analysis service 
 class AIAnalysisService {
     constructor() {
@@ -12,7 +14,12 @@ class AIAnalysisService {
             if (!this.apiKey) {
                 throw new Error('API key is not set');
             }
-            const prompt = this.createEnhancedAnalysisPrompt(cryptoData, technicalIndicators, historicalData);
+
+            // ⬇️ GỌI LSTM TRƯỚC
+            const lstmForecast = await predictLSTM();
+            console.log("🔮 LSTM forecast:", lstmForecast);
+
+            const prompt = this.createEnhancedAnalysisPrompt(cryptoData, technicalIndicators, historicalData, lstmForecast);
 
             const response = await axios.post(`${this.baseURL}/chat/completions`, {
                 model: "meta-llama/Llama-3.3-70B-Instruct",
@@ -45,7 +52,8 @@ class AIAnalysisService {
 
             return {
                 analysis: aiAnalysis,
-                tradingSignals: tradingSignals
+                tradingSignals: tradingSignals,
+                lstmForecast
             };
 
         } catch (error) {
@@ -57,8 +65,21 @@ class AIAnalysisService {
         }
     }
 
-    createEnhancedAnalysisPrompt(cryptoData, indicators, historicalData) {
+    createEnhancedAnalysisPrompt(cryptoData, indicators, historicalData, lstmForecast) {
         const formattedHistoricalData = this.formatHistoricalData(historicalData);
+        const mlForecastText = `
+=== Machine Learning Forecast ===
+[Bitcoin]
+- Next Day: $${lstmForecast.btc.next_day.toFixed(2)}
+- 7-Day:
+${lstmForecast.btc.multi_step.map((p, i) => `Day ${i+1}: $${p.toFixed(2)}`).join("\n")}
+
+[Ethereum]
+- Next Day: $${lstmForecast.eth.next_day.toFixed(2)}
+- 7-Day:
+${lstmForecast.eth.multi_step.map((p, i) => `Day ${i+1}: $${p.toFixed(2)}`).join("\n")}
+`;
+
         return `
             DATA:
                 - Current Price Data:
@@ -69,6 +90,8 @@ class AIAnalysisService {
                 
                 - 30-Day Historical Data:
                 ${formattedHistoricalData || 'No data available'}
+ 
+                ${mlForecastText}
             
             TASK:
                 Analyze ALL crypto assets provided in the data and generate trade setups for EACH coin.
