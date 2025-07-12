@@ -1,4 +1,6 @@
-import { spawn } from "child_process";
+import {
+  spawn
+} from "child_process";
 
 
 export async function predictLSTM() {
@@ -8,6 +10,7 @@ export async function predictLSTM() {
     let output = "";
     process.stdout.on("data", (data) => {
       output += data.toString();
+      console.log("Python Output:", output);
     });
     process.on("close", () => {
       resolve(JSON.parse(output));
@@ -20,11 +23,15 @@ export async function predictLSTM() {
     let output = "";
     process.stdout.on("data", (data) => {
       output += data.toString();
+      console.log("Ethereum Python Output:", output);
     });
     process.on("close", () => {
       resolve(JSON.parse(output));
     });
   });
 
-  return { btc, eth };
+  return {
+    btc,
+    eth
+  };
 }
