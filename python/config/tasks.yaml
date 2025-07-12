@@ -22,7 +22,7 @@ news_collecting:
     - Source (with URL link)
     - Summary (3–5 sentences in English focusing on the impact on Bitcoin and Ethereum)
 
-  agent: stock_news_researcher
+  agent: crypto_news_researcher
 
 fundamental_analysis:
   description: >

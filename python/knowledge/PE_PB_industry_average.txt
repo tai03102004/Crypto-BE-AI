@@ -1,0 +1,110 @@
+Tỷ lệ P/B, P/E trung bình ngành tính đến Q2 2025:
+
+Tài chính ngân hàng: 
+    P/E: 7.93
+    P/B: 1.32
+Chứng khoán và ngân hàng đầu tư:
+    P/E: 18.33
+    P/B: 1.61
+Bảo hiểm:
+    P/E: 10.97
+    P/B: 1.14
+Bất động sản:
+    P/E: 19.94
+    P/B: 1.90
+Cơ sở hạ tầng giao thông vận tải:
+    P/E: 13.01
+    P/B: 2.14
+Xây dựng:
+    P/E: 17.91
+    P/B: 2.07
+Vận chuyển hành khách:
+    P/E: 11.76
+    P/B: -11.16
+Máy móc, thiết bị nặng và đóng tàu:
+    P/E: 11.07
+    P/B: 2.44
+Vận chuyển hàng hóa và giao nhận:
+    P/E: 11.28
+    P/B: 1.88
+Thực phẩm và thuốc lá:
+    P/E: 12.72
+    P/B: 2.63
+Bán lẻ thực phẩm và thuốc:
+    P/E: 16.29
+    P/B: 8.10
+Đồ uống:
+    P/E: 15.28
+    P/B: 2.42
+Sản phẩm cá nhân, gia dụng:
+    P/E: 8.96
+    P/B: 2.41
+Dịch vụ viễn thông:
+    P/E: 15.26
+    P/B: 4.38
+Phần mềm và dịch vụ công nghệ thông tin:
+    P/E: 20.60
+    P/B: 5.16
+Truyền thông và mạng:
+    P/E: 20.07
+    P/B: 0.62
+Kim loại và khai khoáng:
+    P/E: 15.37
+    P/B: 2.82
+Hóa chất:
+    P/E: 11.27
+    P/B: 2.10
+Vật liệu xây dựng:
+    P/E: 14.75
+    P/B: 1.27
+Giấy và lâm sản:
+    P/E: 18.67
+    P/B: 1.18
+Hộp đựng và bao bì:
+    P/E: 11.53
+    P/B: 0.93
+Bán lẻ chuyện dụng:
+    P/E: 18.10
+    P/B: 2.76
+Ô tô và phụ tùng ô tô:
+    P/E: 12.77
+    P/B: 1.27
+Xây dựng và vật liệu xây dựng dân dụng:
+    P/E: 13.58
+    P/B: 2.47
+Dệt may:
+    P/E: 8.14
+    P/B: 1.15
+Hàng gia dụng:
+    P/E: 10.88
+    P/B: 1.19
+Truyền thông và xuất bản:
+    P/E: 9.07
+    P/B: 0.86
+Khách sạn và giải trí:
+    P/E: 15.11
+    P/B: 1.79
+Dầu và khí đốt:
+    P/E: 15.53
+    P/B: 2.10
+Than:
+    P/E: 7.40
+    P/B: 1.01
+Năng lượng tái tạo:
+    P/E: 3.63
+    P/B: 2.20
+Ngành điện:
+    P/E: 12.94
+    P/B: 1.80
+Ngành cấp thoát nước:
+    P/E: 10.67
+    P/B: 1.87
+Dược phẩm:
+    P/E: 15.45
+    P/B: 2.46
+Dịch vụ chăm sóc sức khỏe:
+    P/E: -397.91
+    P/B: 2.02
+Thiết bị vật tư y tế:
+    P/E: 40.34
+    P/B: 1.47
