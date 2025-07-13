@@ -94,46 +94,4 @@ class CryptoNewsResearcher():
             max_rpm=3,
             language="en"
         )
-def test_gemini_connection():
-    """Test Gemini API connection"""
-    try:
-        print("1231312")
-        test_llm = LLM(
-            model=GEMINI_MODEL,
-            api_key=GEMINI_API_KEY,
-            temperature=0.1
-        )
-        print("Testing Gemini API connection...")
 
-
-        
-        # Test với một câu hỏi đơn giản
-        response = test_llm.call("Hello, can you respond with just 'API working'?")
-        print(f"✅ Gemini API test successful: {response}")
-        return True
-    except Exception as e:
-        print(f"❌ Gemini API test failed: {e}")
-        return False
-
-import requests
-
-def test_serper_connection():
-    """Test Serper API connection by directly calling the Serper API"""
-    try:
-        url = "https://google.serper.dev/search"
-        headers = {
-            "X-API-KEY": SERPER_API_KEY,
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "q": "bitcoin news"
-        }
-        response = requests.post(url, headers=headers, json=payload)
-        response.raise_for_status()
-        result = response.json()
-        print("✅ Serper API test successful")
-        print("🔍 Sample title:", result.get("organic", [{}])[0].get("title", "No result"))
-        return True
-    except Exception as e:
-        print(f"❌ Serper API test failed: {e}")
-        return False
