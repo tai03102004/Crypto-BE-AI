@@ -12,6 +12,9 @@ import flash from 'connect-flash';
 import bodyParser from 'body-parser';
 import methodOverride from 'method-override';
 import route from './router/index.route.js';
+
+import AIAnalysisService from './services/AIAgent.service.js';
+
 // Load environment variables
 import {
     connect
@@ -56,19 +59,38 @@ app.use(bodyParser.urlencoded({
 app.use(methodOverride('_method'));
 
 // route
-route(app); // truyền app vào ứng dụng express
+route(app);
 
-// Schedule analysis every 5 minutes
-// cron.schedule('0 * * * *', () => {
-//     console.log('Running scheduled analysis every hour...');
-//     performAnalysis();
-// });
+// Schedule analysis every 1 hour
+cron.schedule('0 * * * *', async () => {
+    console.log('Running scheduled analysis every hour...');
+    // performAnalysis();
+
+    const config = {
+        telegramToken: '8134723930:AAEZWYUfKmArVSJ2GoLtOfVAhRMHTL12gFo',
+        chatId: '5648969247',
+        aiApiKey: 'io-v2-eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJvd25lciI6Ijc1NjNiM2I4LWU3OTEtNGFjMi04YTY1LTg0ZjU3ODkyNDM5NSIsImV4cCI6NDkwNTIwMjQ4Nn0.hYGWdOQVRdbhUYF_IQD1Qd-HNOg7i9NRmhj1PMkDHtS-hK5C0JMqVBF8O31URDswDEVdQIdM2p3is-TXpwxjRw',
+        aiModel: 'meta-llama/Llama-3.3-70B-Instruct',
+        aiBaseUrl: 'https://api.intelligence.io.solutions/api/v1',
+        supportedCoins: ['bitcoin', 'ethereum'],
+        alertThresholds: {
+            priceChange: 5,
+            rsiOverbought: 70,
+            rsiOversold: 30
+        }
+    };
+
+    // Khởi tạo và chạy
+    AIAnalysisService.init(config);
+    await AIAnalysisService.start();
+
+});
 
 
 // Initial analysis on startup
-// setTimeout(() => {
-//     performAnalysis();
-// }, 5000);
+setTimeout(() => {
+    performAnalysis();
+}, 5000);
 
 
 app.listen(PORT, () => {
