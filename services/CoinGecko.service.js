@@ -9,15 +9,14 @@ class CoinGeckoService {
     constructor() {
         this.baseURL = 'https://api.coingecko.com/api/v3';
         this.apiKey = process.env.COINGECKO_API_KEY || null;
+        this.cachedData = null;   // ✅ Đúng
+        this.lastFetch = 0;
     }
-
-    let cachedData = null;
-    let lastFetch = 0;
 
     async getCryptoPrices(coins = ['bitcoin', 'ethereum']) {
         const now = Date.now();
-        if (cachedData && now - lastFetch < 60000) {
-            return cachedData;
+        if (this.cachedData && now - this.lastFetch < 60000) {
+            return this.cachedData;
         }
         try {
             const response = await axios.get(`${this.baseURL}/simple/price`, {
@@ -36,12 +35,12 @@ class CoinGeckoService {
 
                 }
             });
-            cachedData = response.data;
-            lastFetch = now;
+            this.cachedData = response.data;
+            this.lastFetch = now;
             return response.data;
         } catch (error) {
             console.error('Error fetching crypto prices:', error.message);
-            return cachedData || null;
+            return this.cachedData || null;
         }
     }
 
