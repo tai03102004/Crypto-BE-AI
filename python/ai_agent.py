@@ -23,10 +23,6 @@ gemini_llm = LLM(
     max_tokens=2048
 )
 
-print("GEMINI_API_KEY:", GEMINI_API_KEY)
-print("SERPER_API_KEY:", SERPER_API_KEY)
-
-
 # Initialize tools
 scrape_tool = ScrapeWebsiteTool()
 search_tool = SerperDevTool(
