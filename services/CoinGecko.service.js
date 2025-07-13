@@ -11,7 +11,14 @@ class CoinGeckoService {
         this.apiKey = process.env.COINGECKO_API_KEY || null;
     }
 
+    let cachedData = null;
+    let lastFetch = 0;
+
     async getCryptoPrices(coins = ['bitcoin', 'ethereum']) {
+        const now = Date.now();
+        if (cachedData && now - lastFetch < 60000) {
+            return cachedData;
+        }
         try {
             const response = await axios.get(`${this.baseURL}/simple/price`, {
                 params: {
@@ -29,10 +36,12 @@ class CoinGeckoService {
 
                 }
             });
+            cachedData = response.data;
+            lastFetch = now;
             return response.data;
         } catch (error) {
             console.error('Error fetching crypto prices:', error.message);
-            return null;
+            return cachedData || null;
         }
     }
 
