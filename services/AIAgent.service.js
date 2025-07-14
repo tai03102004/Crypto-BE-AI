@@ -68,7 +68,7 @@ class AIAnalysisService {
         };
 
         // Khởi tạo Telegram Bot
-        this.bot = new Telegraf('8134723930:AAEZWYUfKmArVSJ2GoLtOfVAhRMHTL12gFo');
+        this.bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
         console.log('✅ AIAnalysisService initialized');
         return this;
