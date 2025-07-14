@@ -67,9 +67,9 @@ cron.schedule('0 * * * *', async () => {
     // performAnalysis();
 
     const config = {
-        telegramToken: '8134723930:AAEZWYUfKmArVSJ2GoLtOfVAhRMHTL12gFo',
-        chatId: '5648969247',
-        aiApiKey: 'io-v2-eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJvd25lciI6Ijc1NjNiM2I4LWU3OTEtNGFjMi04YTY1LTg0ZjU3ODkyNDM5NSIsImV4cCI6NDkwNTIwMjQ4Nn0.hYGWdOQVRdbhUYF_IQD1Qd-HNOg7i9NRmhj1PMkDHtS-hK5C0JMqVBF8O31URDswDEVdQIdM2p3is-TXpwxjRw',
+        telegramToken: process.env.TELEGRAM_BOT_TOKEN,
+        chatId: process.env.CHAT_ID,
+        aiApiKey: process.env.IOINTELLIGENCE_API_KEY,
         aiModel: 'meta-llama/Llama-3.3-70B-Instruct',
         aiBaseUrl: 'https://api.intelligence.io.solutions/api/v1',
         supportedCoins: ['bitcoin', 'ethereum'],
