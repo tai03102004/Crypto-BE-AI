@@ -325,14 +325,6 @@ curl http://localhost:3000/api/crypto/prices
 
 ---
 
-## 📈 Performance
-
-- Response Time: <200ms
-- Prediction Accuracy: ~85%
-- Real-time Latency: <1s
-- Scalability: 1000+ users
-
----
 
 ## 🤝 Contributing
 
