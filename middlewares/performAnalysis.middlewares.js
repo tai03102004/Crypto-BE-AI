@@ -48,25 +48,22 @@ export const performAnalysis = async (req, res) => {
 
     // Get historical data for all coins
     const coins = Object.keys(priceData);
-    console.log("Coins", coins);
-    const historicalData = await coinGeckoService.getHistoricalDataForCoins(coins, 30);
+    const historicalData = {};
+    for (const coin of coins) {
+        console.log(`Fetching historical data for ${coin}...`);
+        historicalData[coin] = await coinGeckoService.getHistoricalData(coin, 30);
+        await sleep(2000); // Add a 2-second delay between requests
+    }
 
     // Get technical indicators for each coin
     const analysisPromises = coins.map((coinId) => limit(async () => {
-        const symbol = coinId === 'bitcoin' ? 'BTC/USDT' :
-            coinId === 'ethereum' ? 'ETH/USDT' :
-            `${coinId.toUpperCase()}/USDT`;
-        await sleep(15000);
+        const symbol = coinId.toLowerCase();
+
         let indicators = {};
-        if (process.env.TAAPI_API_KEY) {
-            const rsi = await technicalService.getRSI(symbol);
-            await sleep(15000);
-            const macd = await technicalService.getMACD(symbol);
-            await sleep(15000);
-            indicators = {
-                rsi,
-                macd
-            };
+        try {
+            indicators = await technicalService.calculateAllIndicators(symbol);
+        } catch (error) {
+            console.error(`Error calculating indicators for ${coinId}:`, error.message);
         }
 
         // Check for alerts
@@ -113,7 +110,6 @@ export const performAnalysis = async (req, res) => {
         data: analysisData,
         aiAnalysis,
         alerts: getAlerts().slice(-10),
-        historicalData
     };
 
     // console.log('Analysis result:', result);
@@ -125,8 +121,7 @@ export const performAnalysis = async (req, res) => {
         type: 'ANALYSIS_UPDATE',
         data: result
     });
-
-    console.log('Analysis completed successfully');
+    coinGeckoService.clearCache();
     // } catch (error) {
     //     console.error('Error in analysis:', error.message);
     // }

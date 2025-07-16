@@ -28,9 +28,9 @@ class TechnicalIndicators:
             gain = delta.where(delta > 0, 0)
             loss = -delta.where(delta < 0, 0)
             
-            avg_gain = gain.rolling(window=period).mean()
-            avg_loss = loss.rolling(window=period).mean()
-            
+            avg_gain = gain.ewm(alpha=1/period, min_periods=period).mean()
+            avg_loss = loss.ewm(alpha=1/period, min_periods=period).mean()
+    
             rs = avg_gain / avg_loss
             rsi = 100 - (100 / (1 + rs))
             
@@ -330,7 +330,7 @@ class TechnicalIndicators:
     
     @staticmethod
     def calculate_stochastic(prices: List[float], highs: Optional[List[float]] = None, 
-                           lows: Optional[List[float]] = None, k_period: int = 14, d_period: int = 3) -> Dict[str, Any]:
+                        lows: Optional[List[float]] = None, k_period: int = 14, d_period: int = 3) -> Dict[str, Any]:
         """
         Tính Stochastic Oscillator
         %K = (Current Close - Lowest Low) / (Highest High - Lowest Low) * 100

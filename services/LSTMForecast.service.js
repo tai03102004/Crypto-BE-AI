@@ -23,7 +23,6 @@ export async function predictLSTM() {
     let output = "";
     process.stdout.on("data", (data) => {
       output += data.toString();
-      console.log("Ethereum Python Output:", output);
     });
     process.on("close", () => {
       resolve(JSON.parse(output));
