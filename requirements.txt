@@ -1,6 +1,13 @@
-pandas
+# Core cho predict (production)
 numpy
-scikit-learn
-matplotlib
-tensorflow
+tensorflow-cpu
 joblib
+
+# Cho AI agent (THIẾU)
+crewai
+python-dotenv
+
+# Chỉ cần khi training (có thể comment)
+# pandas
+# matplotlib  
+# scikit-learn
