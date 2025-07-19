@@ -1,4 +1,7 @@
-import BinanceLiveTrading from '../services/BinanceLiveTrading.js';
+import BinanceLiveTrading from '../services/BinanceService.service.js';
+import {
+    EventEmitter
+} from 'events';
 
 class TradingAgent extends EventEmitter {
     constructor() {
@@ -125,3 +128,5 @@ class TradingAgent extends EventEmitter {
         return fallbackAmount / signal.entryPoint;
     }
 }
+
+export default TradingAgent;
