@@ -1,16 +1,19 @@
-FROM node:18-alpine  # Thay vì node:18-slim
+# Use Alpine instead of slim for smaller size
+FROM node:18-alpine
 
-# Chỉ install cần thiết
+# Install Python
 RUN apk add --no-cache python3 py3-pip
 
-# Xóa cache sau install
+# Copy package files
+COPY package*.json ./
 RUN npm install && npm cache clean --force
+
+# Copy requirements and install Python packages
+COPY requirements.txt ./
 RUN pip3 install -r requirements.txt && rm -rf ~/.cache/pip
 
-# Multi-stage build
-FROM node:18-alpine AS deps
-COPY package*.json ./
-RUN npm ci --only=production
+# Copy source code
+COPY . .
 
-FROM node:18-alpine AS runner
-COPY --from=deps /app/node_modules ./node_modules
+EXPOSE 3000
+CMD ["npm", "start"]
