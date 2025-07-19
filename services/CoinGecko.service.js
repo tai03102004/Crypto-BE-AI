@@ -13,7 +13,7 @@ class CoinGeckoService {
         this.lastFetch = new Map();
 
         this.rateLimitConfig = {
-            freeCallsPerMinute: 5,
+            freeCallsPerMinute: 1,
             timeWindow: 60000,
             callsInCurrentWindow: 0,
             windowStart: Date.now()
@@ -121,7 +121,7 @@ class CoinGeckoService {
                 reject(error);
             }
 
-            await this.sleep(100);
+            await this.sleep(2000);
         }
 
         this.isProcessingQueue = false;
@@ -171,7 +171,7 @@ class CoinGeckoService {
         return `${method}_${JSON.stringify(params)}`;
     }
 
-    isCacheValid(key, cacheTime = 60000) {
+    isCacheValid(key, cacheTime = 120000) {
         const lastFetch = this.lastFetch.get(key);
         return lastFetch && (Date.now() - lastFetch) < cacheTime;
     }
@@ -180,38 +180,38 @@ class CoinGeckoService {
     async getCryptoPrices(coins = ['bitcoin', 'ethereum'], useCache = true) {
         const cacheKey = this.getCacheKey('prices', coins);
 
-        if (useCache && this.isCacheValid(cacheKey)) {
-            console.log('Returning cached crypto prices');
-            return this.cachedData.get(cacheKey);
-        }
-
-        // try {
-        const response = await this.queueRequest({
-            method: 'GET',
-            url: `${this.baseURL}/simple/price`,
-            params: {
-                ids: coins.join(','),
-                vs_currencies: 'usd',
-                include_24hr_change: true,
-                include_24hr_vol: true,
-                include_market_cap: true
-            }
-        });
-
-        this.cachedData.set(cacheKey, response.data);
-        this.lastFetch.set(cacheKey, Date.now());
-        return response.data;
-        // } catch (error) {
-        //     console.error('Error fetching crypto prices:', error.message);
-
-        //     // Return cached data if available
-        //     if (this.cachedData.has(cacheKey)) {
-        //         console.log('Returning stale cached data due to error');
-        //         return this.cachedData.get(cacheKey);
-        //     }
-
-        //     throw error;
+        // if (useCache && this.isCacheValid(cacheKey)) {
+        //     console.log('Returning cached crypto prices');
+        //     return this.cachedData.get(cacheKey);
         // }
+
+        try {
+            const response = await this.queueRequest({
+                method: 'GET',
+                url: `${this.baseURL}/simple/price`,
+                params: {
+                    ids: coins.join(','),
+                    vs_currencies: 'usd',
+                    include_24hr_change: true,
+                    include_24hr_vol: true,
+                    include_market_cap: true
+                }
+            });
+
+            this.cachedData.set(cacheKey, response.data);
+            this.lastFetch.set(cacheKey, Date.now());
+            return response.data;
+        } catch (error) {
+            console.error('Error fetching crypto prices:', error.message);
+
+            // Return cached data if available
+            if (this.cachedData.has(cacheKey)) {
+                console.log('Returning stale cached data due to error');
+                return this.cachedData.get(cacheKey);
+            }
+
+            throw error;
+        }
     }
 
     async getHistoricalData(coinId, days = 30, useCache = true) {
@@ -299,10 +299,10 @@ class CoinGeckoService {
     async getAllInfoCoin(coins = ['bitcoin', 'ethereum'], useCache = true) {
         const cacheKey = this.getCacheKey('markets', coins);
 
-        if (useCache && this.isCacheValid(cacheKey)) {
-            console.log('Returning cached market data');
-            return this.cachedData.get(cacheKey);
-        }
+        // if (useCache && this.isCacheValid(cacheKey)) {
+        //     console.log('Returning cached market data');
+        //     return this.cachedData.get(cacheKey);
+        // }
 
         // try {
         const response = await this.queueRequest({

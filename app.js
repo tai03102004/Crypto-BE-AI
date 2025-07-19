@@ -13,8 +13,6 @@ import bodyParser from 'body-parser';
 import methodOverride from 'method-override';
 import route from './router/index.route.js';
 
-import AIAnalysisService from './services/AIAgent.service.js';
-
 // Load environment variables
 import {
     connect
@@ -65,25 +63,6 @@ route(app);
 cron.schedule('0 * * * *', async () => {
     console.log('Running scheduled analysis every hour...');
     // performAnalysis();
-
-    const config = {
-        telegramToken: process.env.TELEGRAM_BOT_TOKEN,
-        chatId: process.env.CHAT_ID,
-        aiApiKey: process.env.IOINTELLIGENCE_API_KEY,
-        aiModel: 'meta-llama/Llama-3.3-70B-Instruct',
-        aiBaseUrl: 'https://api.intelligence.io.solutions/api/v1',
-        supportedCoins: ['bitcoin', 'ethereum'],
-        alertThresholds: {
-            priceChange: 5,
-            rsiOverbought: 70,
-            rsiOversold: 30
-        }
-    };
-
-    // Khởi tạo và chạy
-    AIAnalysisService.init(config);
-    await AIAnalysisService.start();
-
 });
 
 

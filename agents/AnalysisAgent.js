@@ -5,21 +5,26 @@ import {
     Telegraf
 } from 'telegraf';
 
-import coinGeckoService from './CoinGecko.service.js';
-import technicalIndicators from './TechnicalAnalysis.service.js';
-import AlertSystem from './AlertSystem.service.js';
+import coinGeckoService from '../services/CoinGecko.service.js';
+import technicalIndicators from '../services/TechnicalAnalysis.service.js';
+import AlertSystem from '../services/AlertSystem.service.js';
 import {
     getAlerts,
     setAlerts
 } from '../data/alerts.js';
+import EventEmitter from 'events';
+import {
+    pro
+} from 'ccxt';
 
 /**
  * AI Agent Service Class
  */
 
-class AIAnalysisService {
+class AIAnalysisAgent extends EventEmitter {
 
     constructor() {
+        super();
         this.bot = null;
         this.aiAgent = null;
         this.cronJobs = [];
@@ -65,27 +70,43 @@ class AIAnalysisService {
         return this;
     }
 
+    // Add method to handle external events
+    handleNewsUpdate(newsData) {
+        console.log('📰 Received news update:', newsData.sentiment);
+        // Update analysis based on news sentiment
+        this.lastNewsSentiment = newsData.sentiment;
+    }
+    updateMarketData(marketData) {
+        console.log(`📊 Market data updated for ${marketData.symbol}`);
+        // Store latest market data for analysis
+        this.latestMarketData = marketData;
+    }
+
     /**
      * Data Analysis with AI
      * @param {string} data - Data to be analyzed
      * @returns {Promise<string>} - Analysis results
      */
     async analyzeWithAI(data) {
-        try {
-            const enhancedPrompt = `
+        // try {
+        let enhancedData = data;
+        if (this.lastNewsSentiment) {
+            enhancedData += `\n\nNews Sentiment: ${this.lastNewsSentiment}`;
+        }
+        const enhancedPrompt = `
                 ${this.aiAgent.instructions}
                 
                 Based on the following data, provide:
-                1. Market analysis
+                1. Market analysis (consider news sentiment if provided)
                 2. Trading signals (if any) with entry point, stop loss, take profit
                 3. Risk assessment
                 
-                Data: ${data}
+                Data: ${enhancedData}
                 
                 Please format the response in **clear, human-readable format** using Markdown. Highlight important sections like:
 
                 ### 🔍 Market Analysis
-- A             brief but insightful analysis of the market trend
+                - A brief but insightful analysis of the market trend
 
                 ### 📈 Trading Signals
                 Provide 1–3 trading signals (if applicable). For each signal, include:
@@ -103,63 +124,70 @@ class AIAnalysisService {
                 - Final thoughts or advice
             `;
 
-            const payload = {
-                model: this.aiAgent.model,
-                messages: [{
-                        role: 'system',
-                        content: enhancedPrompt
-                    },
-                    {
-                        role: 'user',
-                        content: data
-                    }
-                ],
-                max_tokens: 800,
-                temperature: 0.7
-            };
-
-            const response = await axios.post(
-                `${this.aiAgent.baseUrl}/chat/completions`,
-                payload, {
-                    headers: this.aiAgent.headers,
-                    timeout: 30000
+        const payload = {
+            model: this.aiAgent.model,
+            messages: [{
+                    role: 'system',
+                    content: enhancedPrompt
+                },
+                {
+                    role: 'user',
+                    content: data
                 }
-            );
+            ],
+            max_tokens: 800,
+            temperature: 0.7
+        };
 
-            const content = response.data.choices[0].message.content;
-
-            if (content.includes("### 📈 Trading Signals")) {
-                const signalRegex = /\*\*Action\*\*: (BUY|SELL|HOLD)[\s\S]*?\*\*Confidence\*\*: ([0-9.]+)[\s\S]*?\*\*Entry Point\*\*: \$?([0-9,.]+)[\s\S]*?\*\*Stop Loss\*\*: \$?([0-9,.]+)[\s\S]*?\*\*Take Profit\*\*: \$?([0-9,.]+)[\s\S]*?\*\*Reasoning\*\*: (.+?)(?:\n|$)/g;
-                const matches = [...content.matchAll(signalRegex)];
-                const parsedSignals = matches.map(match => ({
-                    action: match[1],
-                    confidence: parseFloat(match[2]),
-                    entryPoint: parseFloat(match[3].replace(/,/g, '')),
-                    stopLoss: parseFloat(match[4].replace(/,/g, '')),
-                    takeProfit: parseFloat(match[5].replace(/,/g, '')),
-                    reasoning: match[6].trim()
-                }));
-
-                return {
-                    analysis: content,
-                    signals: parsedSignals,
-                    summary: "Extracted from Markdown"
-                };
-            } else {
-                return {
-                    analysis: content,
-                    signals: [],
-                    summary: "Extracted from Markdown"
-                };
+        const response = await axios.post(
+            `${this.aiAgent.baseUrl}/chat/completions`,
+            payload, {
+                headers: this.aiAgent.headers,
+                timeout: 30000
             }
-        } catch (error) {
-            console.error('❌ AI Analysis Error:', error.message);
+        );
+
+        const content = response.data.choices[0].message.content;
+
+        console.log("🔍 AI Analysis Result:", content);
+
+        if (content.includes("### 📈 Trading Signals")) {
+            const signalRegex = /\*\*Action\*\*: (BUY|SELL|HOLD)[\s\S]*?\*\*Confidence\*\*: ([0-9.]+)[\s\S]*?\*\*Entry Point\*\*: \$?([0-9,.]+)[\s\S]*?\*\*Stop Loss\*\*: \$?([0-9,.]+)[\s\S]*?\*\*Take Profit\*\*: \$?([0-9,.]+)[\s\S]*?\*\*Reasoning\*\*: (.+?)(?:\n|$)/g;
+            const matches = [...content.matchAll(signalRegex)];
+            const parsedSignals = matches.map(match => ({
+                action: match[1],
+                confidence: parseFloat(match[2]),
+                entryPoint: parseFloat(match[3].replace(/,/g, '')),
+                stopLoss: parseFloat(match[4].replace(/,/g, '')),
+                takeProfit: parseFloat(match[5].replace(/,/g, '')),
+                reasoning: match[6].trim(),
+                timestamp: Date.now()
+            }));
+
+            parsedSignals.forEach(signal => {
+                this.emit('tradingSignal', signal);
+            });
+
             return {
-                analysis: 'Error in AI analysis',
+                analysis: content,
+                signals: parsedSignals,
+                summary: "Extracted from Markdown"
+            };
+        } else {
+            return {
+                analysis: content,
                 signals: [],
-                summary: 'Analysis failed'
+                summary: "Extracted from Markdown"
             };
         }
+        // } catch (error) {
+        //     console.error('❌ AI Analysis Error:', error.message);
+        //     return {
+        //         analysis: 'Error in AI analysis',
+        //         signals: [],
+        //         summary: 'Analysis failed'
+        //     };
+        // }
     }
 
     /**
@@ -256,7 +284,7 @@ class AIAnalysisService {
      */
     async analyzeAndAlert(symbol, forceAlert = false) {
         try {
-            console.log(`🔍 Analyzing ${symbol}...`);
+            console.log(`⛔ Analysis DISABLED for ${symbol} - emergency mode`);
 
             const [priceData, techData] = await Promise.all([
                 coinGeckoService.getCryptoPrices([symbol]),
@@ -337,7 +365,7 @@ class AIAnalysisService {
      * @param {string} message 
      * @param {string} chatId 
      */
-    async sendTelegramMessage(message, chatId = null) {
+    async sendTelegramMessage(message, chatId = process.env.TELEGRAM_CHAT_ID) {
         try {
             await this.bot.telegram.sendMessage(
                 chatId || this.config.chatId,
@@ -490,16 +518,30 @@ class AIAnalysisService {
      * Setup scheduler
      */
     setupScheduler() {
-        const mainJob = cron.schedule(this.config.checkInterval, async () => {
-            console.log('🔄 Scheduled analysis...');
+        if (this.config.enableScheduler === false) {
+            console.log('📅 Scheduler DISABLED (manual mode)');
+            this.cronJobs = [];
+            return;
+        }
+
+        console.log('📅 Setting up autonomous analysis scheduler...');
+
+        // Main analysis every 15 minutes
+        const mainJob = cron.schedule('*/15 * * * *', async () => {
+            console.log('🔄 Scheduled autonomous analysis...');
             for (const coin of this.config.supportedCoins) {
                 await this.analyzeAndAlert(coin);
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                await new Promise(resolve => setTimeout(resolve, 5000)); // 5s between coins
             }
         });
 
-        const quickJob = cron.schedule(this.config.quickCheckInterval, async () => {
-            console.log('⚡ Quick check...');
+        // Quick market check every 5 minutes
+        const quickJob = cron.schedule('*/5 * * * *', async () => {
+            console.log('⚡ Quick market health check...');
+            const marketStatus = await this.getMarketStatus();
+            if (marketStatus.success && marketStatus.signals.length > 0) {
+                console.log(`📊 ${marketStatus.signals.length} active signals detected`);
+            }
         });
 
         this.cronJobs = [mainJob, quickJob];
@@ -582,4 +624,4 @@ class AIAnalysisService {
     }
 }
 
-export default new AIAnalysisService();
+export default new AIAnalysisAgent();

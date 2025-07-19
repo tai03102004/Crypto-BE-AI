@@ -7,18 +7,21 @@ A comprehensive cryptocurrency analysis platform powered by AI, machine learning
 ## ✨ Features
 
 ### 📊 Market Analysis
+
 - Real-time cryptocurrency price monitoring via **CoinGecko API**
 - Advanced technical indicators: RSI, MACD, Bollinger Bands, EMA, SMA, Stochastic
 - AI-powered market sentiment analysis using **Llama 3.3 70B** and Gemini 2.5 Flash, Serper with CrewAI
 - Multi-timeframe analysis and trend detection
 
 ### 🤖 AI & Machine Learning
+
 - LSTM neural networks for **Bitcoin** and **Ethereum** price prediction
 - Next-day and 7-day price forecasting
 - AI-powered trade setup generation with entry/exit points
 - Intelligent market commentary and recommendations
 
 ### 🔔 Alert System
+
 - Smart alert system with configurable thresholds
 - Trading signal alerts (entry points, stop-loss, take-profit)
 - RSI overbought/oversold notifications
@@ -26,18 +29,21 @@ A comprehensive cryptocurrency analysis platform powered by AI, machine learning
 - Send Alert opportune in Telegram.
 
 ### 💬 AI Chat Interface
+
 - Interactive chat with AI for market queries
 - Conversation history and context management
 - Multi-language support (Vietnamese/English)
 - Image upload support for chart analysis
 
 ### 📈 Technical Analysis
+
 - Python-based technical indicator calculations
 - Custom technical analysis algorithms
 - Historical data analysis and pattern recognition
 - Risk-reward ratio calculations
 
 ### 🌐 Real-time Features
+
 - WebSocket support for live updates
 - Real-time price streaming
 - Live alert notifications
@@ -48,23 +54,27 @@ A comprehensive cryptocurrency analysis platform powered by AI, machine learning
 ## 🛠 Technology Stack
 
 **Backend**
+
 - Node.js + Express.js – REST API server
 - MongoDB + Mongoose – Database and ODM
 - WebSocket – Real-time communication
 - Axios – HTTP client for external APIs
 
 **AI & ML**
+
 - Python + TensorFlow/Keras – LSTM neural networks
 - Llama 3.3 70B – AI language model
 - CrewAI – AI agent framework
 - Scikit-learn – Machine learning utilities
 
 **External APIs**
+
 - CoinGecko API – Cryptocurrency market data
 - TAAPI.io – Technical indicators
 - Intelligence.io – AI model hosting
 
 **Data Processing**
+
 - Pandas + NumPy – Data manipulation
 - Matplotlib + Seaborn – Visualization
 - Technical Analysis Library – Custom indicators
@@ -74,23 +84,27 @@ A comprehensive cryptocurrency analysis platform powered by AI, machine learning
 ## 📦 Installation
 
 ### Prerequisites
+
 - Node.js (v16+)
 - Python (v3.8+)
 - MongoDB
 - Git
 
 ### 1️⃣ Clone Repository
+
 ```bash
 git clone <repository-url>
 cd crypto-ai-analysis
 ```
 
 ### 2️⃣ Install Node.js Dependencies
+
 ```bash
 npm install
 ```
 
 ### 3️⃣ Install Python Dependencies
+
 ```bash
 pip install -r requirements.txt
 # or
@@ -98,7 +112,9 @@ pip install pandas numpy tensorflow scikit-learn matplotlib seaborn crewai
 ```
 
 ### 4️⃣ Environment Configuration
+
 Create `.env` file in the root directory:
+
 ```env
 # Database
 MONGO_URL=mongodb://localhost:27017/crypto_ai_db
@@ -122,22 +138,26 @@ NODE_ENV=development
 3. Click your favorite chatbot name. It will be seen HTTP API with you.
 4. Press your telegram chatbot that you just created.
 5. TELEGRAM_BOT_TOKEN=your HTTP API
-6. CHAT_ID = your_chat_id
+6. TELEGRAM_CHAT_ID = your_chat_telegram_id
 ```
 
 ### 5️⃣ Setup Database
+
 ```bash
 mongod
 ```
+
 > Collections are auto-created on first run.
 
 ### 6️⃣ Prepare Training Data
+
 ```bash
 node scripts/mergeBTC.js
 node scripts/mergeETH.js
 ```
 
 ### 7️⃣ Train LSTM Models (Optional)
+
 ```bash
 python python/lstm_train.py
 python python/lstm_train_eth.py
@@ -148,14 +168,17 @@ python python/lstm_train_eth.py
 ## 🚀 Running the Application
 
 **Development Mode**
+
 ```bash
 npm run dev
 ```
 
 **Production Mode**
+
 ```bash
 npm start
 ```
+
 Server: [http://localhost:3000](http://localhost:3000)
 
 ---
@@ -163,26 +186,32 @@ Server: [http://localhost:3000](http://localhost:3000)
 ## 📚 API Endpoints
 
 **Market Data**
+
 - `GET /api/crypto/prices`
 - `GET /api/crypto/history/:coinId`
 
 **Analysis**
+
 - `GET /api/analysis`
 - `POST /api/manual-analysis`
 
 **AI Chat**
+
 - `POST /api/chat-ai/conversations`
 - `GET /api/chat-ai/conversations/:userId`
 - `GET /api/chat-ai/conversations/:conversationId/messages`
 - `POST /api/chat-ai/conversations/:conversationId/messages`
 
 **Alerts**
+
 - `GET /api/alerts`
 
 **Technical Indicators**
+
 - `POST /api/python/indicators`
 
 **System Status**
+
 - `GET /api/status`
 
 ---
@@ -229,6 +258,7 @@ crypto-ai-analysis/
 ## 🔧 Configuration
 
 **AI Model Settings**
+
 ```javascript
 model: "meta-llama/Llama-3.3-70B-Instruct",
 temperature: 0.3,
@@ -236,6 +266,7 @@ max_tokens: 500
 ```
 
 **LSTM Hyperparameters**
+
 ```python
 HYPERPARAMS = {
     'sequence_length': 30,
@@ -248,6 +279,7 @@ HYPERPARAMS = {
 ```
 
 **Alert Thresholds**
+
 ```javascript
 thresholds: {
     priceChange: 5,
@@ -298,6 +330,7 @@ thresholds: {
 ## 🚨 Monitoring & Alerts
 
 **Alert Types**
+
 - Price change alerts
 - Technical indicator signals
 - Trading opportunity notifications
@@ -306,6 +339,7 @@ thresholds: {
 - Important news about crypto market
 
 **WebSocket Events**
+
 ```javascript
 {
   type: 'ANALYSIS_UPDATE',
@@ -318,17 +352,20 @@ thresholds: {
 ## 🧪 Testing
 
 **Indicators**
+
 ```bash
 python python/technical_indicators.py '[100,101,102,103,104]' 'rsi'
 ```
 
 **Predictions**
+
 ```bash
 python python/predict_lstm.py
 python python/predict_lstm_eth.py
 ```
 
 **API**
+
 ```bash
 curl http://localhost:3000/api/status
 curl http://localhost:3000/api/crypto/prices
@@ -356,11 +393,13 @@ curl http://localhost:3000/api/crypto/prices
 ---
 
 ## 📝 License
+
 MIT License – see `LICENSE`
 
 ---
 
 ## 🆘 Support
+
 - Create an issue
 - Check documentation
 - Review examples
