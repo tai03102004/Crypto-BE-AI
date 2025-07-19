@@ -1,0 +1,96 @@
+# Dependencies (will be installed)
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage
+*.lcov
+
+# Documentation
+README.md
+*.md
+docs/
+documentation/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Cache
+.npm
+.eslintcache
+.cache/
+
+# Build outputs
+dist/
+build/
+.next/
+
+# Test files
+test/
+tests/
+**/*.test.js
+**/*.spec.js
+jest.config.js
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Docker files
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Development tools
+nodemon.json
+.prettier*
+.eslint*
+
+# Railway/deployment specific
+.railway/
