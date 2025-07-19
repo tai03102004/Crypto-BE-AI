@@ -1,24 +1,13 @@
-# Base image: Python (vì TensorFlow dễ cài hơn)
-FROM python:3.9
+FROM node:18-slim
 
-# Install Node.js
-RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
-    && apt-get install -y nodejs
+RUN apt-get update && apt-get install -y python3 python3-pip
 
-# Create app directory
-WORKDIR /app
-
-# Copy code
-COPY . .
-
-# Install Python dependencies
-RUN pip install -r requirements.txt
-
-# Install Node.js dependencies
+COPY package*.json ./
 RUN npm install
 
-# Expose port (nếu Node.js chạy cổng 3000)
-EXPOSE 3000
+COPY requirements.txt ./
+RUN pip3 install -r requirements.txt --break-system-packages
 
-# Start Node.js server
+COPY . .
+EXPOSE 3000
 CMD ["npm", "start"]
