@@ -1,6 +1,6 @@
 # 🚀 Crypto AI Analysis Platform
 
-A comprehensive cryptocurrency analysis platform powered by AI, machine learning, and real-time technical analysis. This system provides automated crypto market analysis, LSTM-based price predictions, and intelligent trading insights.
+A comprehensive AI-powered crypto analytics platform that combines machine learning with real-time technical analysis to deliver automated market insights and in-depth research. The system intelligently analyzes market conditions, executes trades automatically when confidence exceeds 80%, and issues timely alerts to users. Leveraging advanced LSTM models and transaction-level data, it also provides accurate short-term price predictions for informed decision-making.
 
 ---
 
@@ -49,6 +49,12 @@ A comprehensive cryptocurrency analysis platform powered by AI, machine learning
 - Live alert notifications
 - Auto-refresh market data
 
+🤖 AI Agent Automation
+
+- Automated Trading Powered by AI: Seamlessly executes trades by analyzing technical indicators, real-time market data, and breaking news.
+- Multi-Source Intelligence: Combines sentiment analysis from news, on-chain data, and market signals to optimize entry and exit strategies.
+- Smart Decision-Making: Acts autonomously when confidence is high, or sends alerts for manual review in volatile conditions.
+
 ---
 
 ## 🛠 Technology Stack
@@ -70,7 +76,7 @@ A comprehensive cryptocurrency analysis platform powered by AI, machine learning
 **External APIs**
 
 - CoinGecko API – Cryptocurrency market data
-- TAAPI.io – Technical indicators
+- Binance Testnet
 - Intelligence.io – AI model hosting
 
 **Data Processing**
@@ -132,6 +138,19 @@ SERPER_API_KEY=your_serper_api_key
 PORT=3000
 NODE_ENV=development
 
+# Binace Testnet: https://testnet.binance.vision/
+1. BINANCE_API_KEY=api_key
+2. BINANCE_SECRET_KEY=secret_key
+3. ENABLE_TELEGRAM=false
+4. NODE_ENV=testnet
+5. BINANCE_TESTNET=true
+# Trading Settings
+1. TRADING_MODE=live
+2. ENABLE_LIVE_DATA=true
+3. ENABLE_SCHEDULER=true
+4. RISK_PER_TRADE=0.02   # 2% risk per trade
+5. MIN_CONFIDENCE=0.75   # Minimum signal confidence
+
 #Setup Telegram
 1. Click on search and press BotFather
 2. Press /start and then /newbot
@@ -139,6 +158,7 @@ NODE_ENV=development
 4. Press your telegram chatbot that you just created.
 5. TELEGRAM_BOT_TOKEN=your HTTP API
 6. TELEGRAM_CHAT_ID = your_chat_telegram_id
+WS_PORT=8081
 ```
 
 ### 5️⃣ Setup Database
@@ -214,44 +234,7 @@ Server: [http://localhost:3000](http://localhost:3000)
 
 - `GET /api/status`
 
----
-
-## 📁 Project Structure
-
-```
-crypto-ai-analysis/
-├── config/
-│   └── database.js
-├── controllers/
-│   ├── ai_chat.controller.js
-│   ├── analysis.controller.js
-│   └── crypto/
-├── models/
-│   ├── ai_message.model.js
-│   ├── ai_conversation.model.js
-│   └── ai_analysis.model.js
-├── services/
-│   ├── AIAnalysis.service.js
-│   ├── CoinGecko.service.js
-│   ├── TechnicalAnalysis.service.js
-│   ├── LSTMForecast.service.js
-│   └── AlertSystem.service.js
-├── python/
-│   ├── lstm_train.py
-│   ├── lstm_train_eth.py
-│   ├── predict_lstm.py
-│   ├── predict_lstm_eth.py
-│   ├── technical_indicators.py
-│   ├── ai_agent.py
-│   └── data/
-├── router/
-│   └── *.route.js
-├── middlewares/
-│   └── performAnalysis.middlewares.js
-└── scripts/
-    ├── mergeBTC.js
-    └── mergeETH.js
-```
+````
 
 ---
 
@@ -263,7 +246,7 @@ crypto-ai-analysis/
 model: "meta-llama/Llama-3.3-70B-Instruct",
 temperature: 0.3,
 max_tokens: 500
-```
+````
 
 **LSTM Hyperparameters**
 
@@ -289,16 +272,23 @@ thresholds: {
 }
 ```
 
----
-
 ## 🤖 AI Features
 
-- CryptoAgent: Your tool for automated sentiment analysis and crypto news research
-- Trading signal generation
+- **CryptoAgent**: Your tool for automated sentiment analysis and crypto news research
+- **TradingAgent**: Automated trading execution with smart position management
+- **AnalysisAgent**: Real-time market analysis and signal generation
+- **NewsAgent**: Crypto news aggregation and sentiment analysis
+- **RiskAgent**: Advanced risk assessment and portfolio protection
+- **AlertAgent**: Contextual smart alerts and notifications
+- Trading signal generation with confidence scoring
 - Risk assessment & recommendations
 - Next-day & 7-day forecasts
 - ML-based anomaly detection
-- Contextual smart alerts
+- Auto stop-loss and take-profit execution
+- Real-time P&L tracking and portfolio monitoring
+- Multi-exchange support (Binance, testnet)
+- Telegram integration for remote control
+- Paper trading and live trading modes
 
 ---
 
@@ -317,13 +307,18 @@ thresholds: {
 
 ## 🔄 Data Flow
 
-1. Data Collection – CoinGecko API
-2. Technical Analysis – Python scripts
-3. AI Analysis – Llama model
-4. ML Prediction – LSTM
-5. Alert Generation – Smart alerts
-6. Real-time Updates – WebSocket
-7. AI Research - Gemini model and Serper dev
+1. **📊 Data Collection** – CoinGecko API, Binance API, real-time market data
+2. **📰 News Aggregation** – Serper.dev API for crypto news and sentiment data
+3. **🔍 Technical Analysis** – JavaScript-based indicators and chart patterns
+4. **🤖 AI Analysis** – OpenAI GPT-4 and Google Gemini models for market insights
+5. **🎯 Signal Generation** – ML-powered buy/sell signals with confidence scoring
+6. **💹 Trading Execution** – Automated order placement via Binance API
+7. **⚠️ Risk Management** – Dynamic stop-loss and take-profit calculations
+8. **📈 Portfolio Tracking** – Real-time P&L monitoring and position management
+9. **🚨 Alert Generation** – Smart alerts via Telegram integration
+10. **🔄 Real-time Updates** – WebSocket connections for live market data
+11. **📱 Remote Control** – Telegram bot for system monitoring and manual overrides
+12. **📊 Performance Analytics** – Trading statistics and success rate tracking
 
 ---
 
@@ -414,6 +409,7 @@ MIT License – see `LICENSE`
 - Mobile integration
 - Real-time trading execution
 - Social sentiment analysis
+- provide more stable profit figures as it is still in the testing and transition phase
 
 ---
 
