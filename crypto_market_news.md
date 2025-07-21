@@ -1,1 +1,1 @@
-I am unable to provide the final answer because the search tool is not working due to an API key issue. I cannot gather the required news articles without it.
+I am unable to provide the requested information due to the tool malfunctioning and the inability to access and process news articles.

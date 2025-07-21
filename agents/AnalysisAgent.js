@@ -13,9 +13,7 @@ import {
     setAlerts
 } from '../data/alerts.js';
 import EventEmitter from 'events';
-import {
-    pro
-} from 'ccxt';
+import BinanceLiveTrading from '../services/BinanceService.service.js';
 
 /**
  * AI Agent Service Class
@@ -31,6 +29,8 @@ class AIAnalysisAgent extends EventEmitter {
         this.isRunning = false;
         this.previousPrices = {};
         this.alertSystem = AlertSystem;
+        this.orchestrator = null;
+        this.binanceLive = BinanceLiveTrading;
 
         this.defaultConfig = {
             checkInterval: '*/30 * * * *',
@@ -81,6 +81,10 @@ class AIAnalysisAgent extends EventEmitter {
         // Store latest market data for analysis
         this.latestMarketData = marketData;
     }
+    setOrchestrator(orchestrator) {
+        this.orchestrator = orchestrator;
+        console.log('🔗 Orchestrator reference set in AnalysisAgent');
+    }
 
     /**
      * Data Analysis with AI
@@ -110,6 +114,7 @@ class AIAnalysisAgent extends EventEmitter {
 
                 ### 📈 Trading Signals
                 Provide 1–3 trading signals (if applicable). For each signal, include:
+                - **Coin**: The coin symbol (BTC or ETH)
                 - **Action**: One of BUY, SELL, or HOLD
                 - **Confidence**: A number between 0 and 1 (e.g. 0.85)
                 - **Entry Point**: Suggested price to enter
@@ -155,6 +160,7 @@ class AIAnalysisAgent extends EventEmitter {
             const signalRegex = /\*\*Action\*\*: (BUY|SELL|HOLD)[\s\S]*?\*\*Confidence\*\*: ([0-9.]+)[\s\S]*?\*\*Entry Point\*\*: \$?([0-9,.]+)[\s\S]*?\*\*Stop Loss\*\*: \$?([0-9,.]+)[\s\S]*?\*\*Take Profit\*\*: \$?([0-9,.]+)[\s\S]*?\*\*Reasoning\*\*: (.+?)(?:\n|$)/g;
             const matches = [...content.matchAll(signalRegex)];
             const parsedSignals = matches.map(match => ({
+                coin: match[0].includes('BTC') ? 'bitcoin' : 'ethereum',
                 action: match[1],
                 confidence: parseFloat(match[2]),
                 entryPoint: parseFloat(match[3].replace(/,/g, '')),
@@ -283,30 +289,31 @@ class AIAnalysisAgent extends EventEmitter {
      * @param {boolean} forceAlert - Force alert sending
      */
     async analyzeAndAlert(symbol, forceAlert = false) {
-        try {
-            console.log(`⛔ Analysis DISABLED for ${symbol} - emergency mode`);
+        // try {
+        console.log(`⛔ Analysis DISABLED for ${symbol} - emergency mode`);
+        // const marketData = await this.getMarketData(symbol);
 
-            const [priceData, techData] = await Promise.all([
-                coinGeckoService.getCryptoPrices([symbol]),
-                technicalIndicators.getTechnicalIndicators(symbol)
-            ]);
+        const [priceData, techData] = await Promise.all([
+            coinGeckoService.getCryptoPrices([symbol]),
+            technicalIndicators.getTechnicalIndicators(symbol)
+        ]);
 
-            const currentPrice = priceData[symbol].usd;
-            const previousPrice = this.previousPrices[symbol];
+        const currentPrice = priceData[symbol].usd;
+        const previousPrice = this.previousPrices[symbol];
 
 
-            const alerts = this.alertSystem.checkAlerts(
-                symbol,
-                priceData[symbol],
-                previousPrice ? {
-                    usd: previousPrice
-                } : null,
-                techData,
-            );
+        const alerts = this.alertSystem.checkAlerts(
+            symbol,
+            priceData[symbol],
+            previousPrice ? {
+                usd: previousPrice
+            } : null,
+            techData,
+        );
 
-            console.log(`Alerts for ${symbol}:`, alerts);
+        console.log(`Alerts for ${symbol}:`, alerts);
 
-            const analysisData = `
+        const analysisData = `
                 Analyze ${symbol.toUpperCase()}:
                 - Current Price: $${currentPrice.toFixed(2)}
                 - 24h Change: ${priceData[symbol].usd_24h_change.toFixed(2)}%
@@ -317,47 +324,55 @@ class AIAnalysisAgent extends EventEmitter {
                 Provide analysis and trading recommendations.
             `;
 
-            const aiResult = await this.analyzeWithAI(analysisData);
-            if (aiResult.signals && aiResult.signals.length > 0) {
-                const tradingSignals = aiResult.signals.map(signal => ({
-                    ...signal,
-                    coin: symbol,
-                    timestamp: new Date()
-                }));
-                console.log(`Trading signals for ${symbol}:`, tradingSignals);
-                this.alertSystem.setTradingSignals(tradingSignals);
-            }
-            const shouldAlert = forceAlert ||
-                alerts.length > 0 ||
-                (aiResult.signals && aiResult.signals.length > 0) ||
-                Math.abs(priceData[symbol].usd_24h_change) > 5;
+        const aiResult = await this.analyzeWithAI(analysisData);
+        if (aiResult.signals && aiResult.signals.length > 0) {
+            const tradingSignals = aiResult.signals.map(signal => ({
+                coin: symbol,
+                action: signal.action,
+                confidence: signal.confidence,
+                entryPoint: signal.entryPoint,
+                stopLoss: signal.stopLoss,
+                takeProfit: signal.takeProfit,
+                timestamp: new Date(),
+                analysis: aiResult.analysis
+            }));
+            this.alertSystem.setTradingSignals(tradingSignals);
+            tradingSignals.forEach(signal => {
+                console.log(`📤 Emitting trading signal: ${signal.action} ${signal.coin} (confidence: ${signal.confidence})`);
+                this.emit('tradingSignal', signal);
+            });
+        }
+        const shouldAlert = forceAlert ||
+            alerts.length > 0 ||
+            (aiResult.signals && aiResult.signals.length > 0) ||
+            Math.abs(priceData[symbol].usd_24h_change) > 5;
 
-            if (shouldAlert) {
-                const alertMessage = this.formatAlertMessage(symbol, priceData, techData, aiResult, alerts);
-                await this.sendTelegramMessage(alertMessage);
-                this.previousPrices[symbol] = currentPrice;
+        if (shouldAlert) {
+            const alertMessage = this.formatAlertMessage(symbol, priceData, techData, aiResult, alerts);
+            await this.sendTelegramMessage(alertMessage);
+            this.previousPrices[symbol] = currentPrice;
 
-                console.log(`✅ Alert sent for ${symbol} (${alerts.length} alerts, ${aiResult.signals?.length || 0} signals)`);
-                return {
-                    success: true,
-                    message: 'Alert sent successfully',
-                    alertCount: alerts.length,
-                    signalCount: aiResult.signals?.length || 0
-                };
-            } else {
-                console.log(`ℹ️ No alert needed for ${symbol}`);
-                return {
-                    success: false,
-                    message: 'No alert needed'
-                };
-            }
-        } catch (error) {
-            console.error(`❌ Error analyzing ${symbol}:`, error.message);
+            console.log(`✅ Alert sent for ${symbol} (${alerts.length} alerts, ${aiResult.signals?.length || 0} signals)`);
+            return {
+                success: true,
+                message: 'Alert sent successfully',
+                alertCount: alerts.length,
+                signalCount: aiResult.signals?.length || 0
+            };
+        } else {
+            console.log(`ℹ️ No alert needed for ${symbol}`);
             return {
                 success: false,
-                error: error.message
+                message: 'No alert needed'
             };
         }
+        // } catch (error) {
+        //     console.error(`❌ Error analyzing ${symbol}:`, error.message);
+        //     return {
+        //         success: false,
+        //         error: error.message
+        //     };
+        // }
     }
 
     /**
@@ -473,6 +488,168 @@ class AIAnalysisAgent extends EventEmitter {
             });
         });
 
+        this.bot.command('portfolio', async (ctx) => {
+            try {
+                if (!this.orchestrator) {
+                    ctx.reply('❌ System not fully initialized');
+                    return;
+                }
+                if (!this.orchestrator?.agents?.trading) {
+                    ctx.reply('❌ Trading agent not available');
+                    return;
+                }
+
+                const portfolio = this.orchestrator.agents.trading.getPortfolioStatus();
+
+                let message = `📊 <b>PORTFOLIO STATUS</b>\n\n`;
+                message += `💰 <b>Realized P&L:</b> $${portfolio.totalRealizedPnL.toFixed(2)}\n`;
+                message += `💹 <b>Unrealized P&L:</b> $${portfolio.totalUnrealizedPnL.toFixed(2)}\n`;
+                message += `🎯 <b>Win Rate:</b> ${portfolio.winRate}%\n`;
+                message += `📊 <b>Total Trades:</b> ${portfolio.totalTrades}\n\n`;
+
+                if (portfolio.positions.length > 0) {
+                    message += `🔄 <b>OPEN POSITIONS (${portfolio.positions.length}):</b>\n`;
+                    portfolio.positions.forEach(pos => {
+                        const pnl = pos.unrealizedPnL;
+                        const emoji = pnl && pnl.isProfit ? '🟢' : '🔴';
+                        message += `${emoji} ${pos.symbol}: $${pos.currentPrice.toFixed(2)} `;
+                        if (pnl) {
+                            message += `(${pnl.percentage.toFixed(2)}%)\n`;
+                        } else {
+                            message += '\n';
+                        }
+                    });
+                } else {
+                    message += `📭 <i>No open positions</i>`;
+                }
+
+                ctx.reply(message, {
+                    parse_mode: 'HTML'
+                });
+            } catch (error) {
+                ctx.reply(`❌ Error: ${error.message}`);
+            }
+        });
+
+        this.bot.command('pnl', async (ctx) => {
+            try {
+                if (!this.orchestrator?.agents?.trading) {
+                    ctx.reply('❌ Trading agent not available');
+                    return;
+                }
+                const portfolio = this.orchestrator.agents.trading.getPortfolioStatus();
+                const stats = this.orchestrator.agents.trading.tradingStats;
+
+                const message = `📈 <b>P&L SUMMARY</b>\n\n` +
+                    `💰 <b>Total P&L:</b> $${portfolio.totalRealizedPnL.toFixed(2)}\n` +
+                    `📅 <b>Today's P&L:</b> $${stats.dailyPnL.toFixed(2)}\n` +
+                    `💹 <b>Unrealized P&L:</b> $${portfolio.totalUnrealizedPnL.toFixed(2)}\n\n` +
+                    `✅ <b>Winning Trades:</b> ${stats.winTrades}\n` +
+                    `❌ <b>Losing Trades:</b> ${stats.lossTrades}\n` +
+                    `🎯 <b>Win Rate:</b> ${portfolio.winRate}%\n` +
+                    `📊 <b>Total Trades:</b> ${stats.totalTrades}`;
+
+                ctx.reply(message, {
+                    parse_mode: 'HTML'
+                });
+            } catch (error) {
+                ctx.reply(`❌ Error: ${error.message}`);
+            }
+        });
+
+        // Add to AnalysisAgent setupTelegramCommands():
+
+        this.bot.command('trades', async (ctx) => {
+            try {
+                if (!this.orchestrator?.agents?.trading) {
+                    ctx.reply('❌ Trading agent not available');
+                    return;
+                }
+
+                const history = this.orchestrator.agents.trading.orderHistory.slice(-10);
+
+                if (history.length === 0) {
+                    ctx.reply('📭 No recent trades');
+                    return;
+                }
+
+                let message = `📊 <b>RECENT TRADES (${history.length})</b>\n\n`;
+
+                history.forEach(trade => {
+                    const emoji = trade.side === 'BUY' ? '🟢' : '🔴';
+                    const time = new Date(trade.timestamp).toLocaleString();
+                    message += `${emoji} <b>${trade.side}</b> ${trade.symbol}\n`;
+                    message += `💰 $${trade.price} | ${trade.amount} | ${trade.mode}\n`;
+                    message += `⏰ ${time}\n\n`;
+                });
+
+                ctx.reply(message, {
+                    parse_mode: 'HTML'
+                });
+            } catch (error) {
+                ctx.reply(`❌ Error: ${error.message}`);
+            }
+        });
+
+        this.bot.command('balance', async (ctx) => {
+            try {
+                if (!this.orchestrator?.agents?.trading) {
+                    ctx.reply('❌ Trading agent not available');
+                    return;
+                }
+
+                const tradingAgent = this.orchestrator.agents.trading;
+                const status = tradingAgent.getStatus();
+
+                let message = `💰 <b>ACCOUNT BALANCE</b>\n\n`;
+
+                if (status.tradingMode === 'live') {
+                    try {
+                        if (!tradingAgent.binanceLive.exchange) {
+                            console.log('🔧 Binance not initialized, initializing now...');
+                            const initialized = await tradingAgent.binanceLive.initialize();
+                            if (!initialized) {
+                                ctx.reply('❌ Failed to connect to Binance');
+                                return;
+                            }
+                        }
+                        const liveBalance = await tradingAgent.binanceLive.getAccountBalance();
+                        message += `🔴 <b>LIVE ACCOUNT</b>\n`;
+                        message += `• USDT: $${liveBalance?.USDT?.toFixed(2) || '0.00'}\n`;
+                        message += `• BTC: ${liveBalance?.BTC?.toFixed(8) }\n`;
+                        message += `• ETH: ${liveBalance?.ETH?.toFixed(8) }\n`;
+                    } catch (error) {
+                        message += `❌ Failed to get live balance: ${error.message}`;
+                    }
+                } else {
+                    console.log('👉 status.balance:', status.balance);
+
+                    message += `📄 <b>PAPER TRADING</b>\n`;
+                    message += `• USDT: $${status.balance?.USDT?.toFixed(2) }\n`;
+                    message += `• BTC: ${status.balance?.BTC?.toFixed(8) }\n`;
+                    message += `• ETH: ${status.balance?.ETH?.toFixed(8) }\n`;
+                }
+
+                ctx.reply(message, {
+                    parse_mode: 'HTML'
+                });
+            } catch (error) {
+                ctx.reply(`❌ Error: ${error.message}`);
+            }
+        });
+
+        // Auto trigger analysis để test
+        this.bot.command('force_trade', async (ctx) => {
+            ctx.reply('🔄 Forcing analysis to generate trades...');
+
+            for (const coin of ['bitcoin', 'ethereum']) {
+                await this.analyzeAndAlert(coin, true);
+                await new Promise(resolve => setTimeout(resolve, 2000));
+            }
+
+            ctx.reply('✅ Analysis completed - check for auto trades!');
+        });
+
         this.bot.command('analyze', async (ctx) => {
             const args = ctx.message.text.split(' ');
             const symbol = args[1] || 'bitcoin';
@@ -497,6 +674,11 @@ class AIAnalysisAgent extends EventEmitter {
                     /start - Start
                     /status - Market status
                     /signals - View all active trading signals
+                    /portfolio - View portfolio status
+                    /pnl - View P&L summary
+                    /trades - View recent trades
+                    /balance - View account balance
+                    /force_trade - Force analysis to generate trades
                     /analyze [coin] - Coin analysis
                     /help - Instructions
 

@@ -16,7 +16,7 @@ class AgentOrchestrator extends EventEmitter {
             symbols: ['BTCUSDT', 'ETHUSDT'],
             supportedCoins: ['bitcoin', 'ethereum'],
             riskLevel: "medium",
-            tradingMode: 'paper', // paper or live
+            tradingMode: 'live', // paper or live
         }
     }
 
@@ -49,7 +49,10 @@ class AgentOrchestrator extends EventEmitter {
                 AIAnalysisAgent.init(sharedConfig);
             }
             this.agents.analysis = AIAnalysisAgent;
-
+            if (this.agents.analysis && this.agents.analysis.setOrchestrator) {
+                this.agents.analysis.setOrchestrator(this);
+                console.log('🔗 Orchestrator reference set');
+            }
             // Setup communication between agents
             this.setupAgentCommunication();
 
@@ -74,38 +77,38 @@ class AgentOrchestrator extends EventEmitter {
     setupAgentCommunication() {
         console.log('🔇 ALL AGENT COMMUNICATION DISABLED');
         // Market Agent -> Analysis Agent
-        if (this.agents.market && this.agents.analysis) {
-            this.agents.market.on('priceUpdate', (data) => {
-                // Trigger analysis when significant price changes occur
-                if (Math.abs(data.change24h) > 2) {
-                    const coinId = this.convertSymbolToCoinId(data.symbol);
-                    if (this.agents.analysis.analyzeAndAlert) {
-                        this.agents.analysis.analyzeAndAlert(coinId, false);
-                    }
-                }
-            });
+        // if (this.agents.market && this.agents.analysis) {
+        //     this.agents.market.on('priceUpdate', (data) => {
+        //         // Trigger analysis when significant price changes occur
+        //         if (Math.abs(data.change24h) > 2) {
+        //             const coinId = this.convertSymbolToCoinId(data.symbol);
+        //             if (this.agents.analysis.analyzeAndAlert) {
+        //                 this.agents.analysis.analyzeAndAlert(coinId, false);
+        //             }
+        //         }
+        //     });
 
-            this.agents.market.on('marketDataUpdate', (data) => {
-                // Update analysis agent with new market data
-                if (this.agents.analysis.updateMarketData) {
-                    this.agents.analysis.updateMarketData(data);
-                }
-            });
-        }
+        //     this.agents.market.on('marketDataUpdate', (data) => {
+        //         // Update analysis agent with new market data
+        //         if (this.agents.analysis.updateMarketData) {
+        //             this.agents.analysis.updateMarketData(data);
+        //         }
+        //     });
+        // }
 
         // News Agent -> Analysis Agent
-        if (this.agents.news && this.agents.analysis) {
-            this.agents.news.on('marketNews', (news) => {
-                try {
-                    if (this.agents.analysis.handleNewsUpdate) {
-                        console.log('📰 Processing news update for analysis');
-                        this.agents.analysis.handleNewsUpdate(news);
-                    }
-                } catch (error) {
-                    console.error('❌ Error in news update handler:', error);
-                }
-            });
-        }
+        // if (this.agents.news && this.agents.analysis) {
+        //     this.agents.news.on('marketNews', (news) => {
+        //         try {
+        //             if (this.agents.analysis.handleNewsUpdate) {
+        //                 console.log('📰 Processing news update for analysis');
+        //                 this.agents.analysis.handleNewsUpdate(news);
+        //             }
+        //         } catch (error) {
+        //             console.error('❌ Error in news update handler:', error);
+        //         }
+        //     });
+        // }
 
         // Analysis Agent -> Risk Manager -> Trading Agent
         if (this.agents.analysis && this.agents.risk) {
@@ -119,43 +122,52 @@ class AgentOrchestrator extends EventEmitter {
             });
         }
 
-        if (this.agents.risk && this.agents.trading) {
-            this.agents.risk.on('signalApproved', (signal) => {
-                try {
-                    console.log('✅ Signal approved, executing trade...');
-                    this.agents.trading.handleEvent('executeSignal', signal);
-                } catch (error) {
-                    console.error('❌ Error in signal approval handler:', error);
+        // Analysis -> Trading
+        if (this.agents.analysis && this.agents.trading) {
+            this.agents.analysis.on('tradingSignal', async (signal) => {
+                console.log('🎯 AUTO TRADE SIGNAL RECEIVED:', signal);
+
+                // Validate signal quality
+                if (signal.confidence >= 0.75) {
+                    const result = await this.agents.trading.executeSignal(signal);
+                    console.log('🔍 Signal validation passed:', signal);
+                    console.log('Result trading: ', result);
+
+                    if (result && result.success) {
+                        console.log('✅ AUTO TRADE EXECUTED:', result.order);
+
+                        // Send immediate notification
+                        const message = `🚀 <b>AUTO TRADE EXECUTED</b>\n\n` +
+                            `🪙 <b>Coin:</b> ${signal.coin.toUpperCase()}\n` +
+                            `🎯 <b>Action:</b> ${signal.action}\n` +
+                            `💰 <b>Price:</b> $${result.order.price}\n` +
+                            `📊 <b>Amount:</b> ${result.order.amount}\n` +
+                            `🎖️ <b>Confidence:</b> ${(signal.confidence * 100).toFixed(0)}%\n` +
+                            `⏰ <b>Time:</b> ${new Date().toLocaleString()}`;
+
+                        if (this.agents.analysis.sendTelegramMessage) {
+                            await this.agents.analysis.sendTelegramMessage(message);
+                        }
+                    } else {
+                        console.log('❌ AUTO TRADE FAILED:', result?.error);
+                    }
+                } else {
+                    console.log(`⚠️ Signal rejected - low confidence: ${(signal.confidence * 100).toFixed(0)}%`);
                 }
             });
         }
 
-        // Trading Agent -> All (notifications)
+
+        // Telegram Messaging
         if (this.agents.trading) {
-            this.agents.trading.on('orderExecuted', (order) => {
-                console.log('💰 Order executed:', order);
-                this.emit('orderExecuted', order);
-
-                // Send Telegram notification
+            this.agents.trading.on('sendTelegramMessage', (message) => {
                 if (this.agents.analysis && this.agents.analysis.sendTelegramMessage) {
-                    const message = `💰 <b>Order Executed</b>\n\n` +
-                        `📊 <b>Symbol:</b> ${order.symbol}\n` +
-                        `🎯 <b>Action:</b> ${order.side}\n` +
-                        `💎 <b>Price:</b> $${order.price}\n` +
-                        `📈 <b>Quantity:</b> ${order.quantity}\n` +
-                        `⏰ <b>Time:</b> ${new Date().toLocaleString()}`;
-
                     this.agents.analysis.sendTelegramMessage(message);
                 }
             });
 
-            this.agents.trading.on('tradeError', (error) => {
-                console.error('❌ Trade execution error:', error);
-                if (this.agents.analysis && this.agents.analysis.sendTelegramMessage) {
-                    this.agents.analysis.sendTelegramMessage(
-                        `❌ <b>Trade Error</b>\n\n${error.error}`
-                    );
-                }
+            this.agents.trading.on('orderExecuted', (order) => {
+                console.log('📋 Order executed:', order);
             });
         }
     }
@@ -181,14 +193,6 @@ class AgentOrchestrator extends EventEmitter {
             }
         }
         this.isRunning = true;
-    }
-
-    convertSymbolToCoinId(symbol) {
-        const mapping = {
-            'BTCUSDT': 'bitcoin',
-            'ETHUSDT': 'ethereum'
-        };
-        return mapping[symbol] || symbol.toLowerCase().replace('usdt', '');
     }
 
     async stop() {

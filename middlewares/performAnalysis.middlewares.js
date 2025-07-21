@@ -27,7 +27,7 @@ const limit = pLimit(1); // Limit concurrency to 1 to avoid rate limiting issues
 
 // WebSocket server for real-time updates
 const wss = new WebSocketServer({
-    port: 8080
+    port: process.env.WS_PORT || 8081
 });
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
