@@ -1,0 +1,26 @@
+{
+  "dataset_version": "1.0.0",
+  "partition": "oos",
+  "filename": "breakouts_oos_2025_2026.csv",
+  "sha256": "672a95563769a753906e8f6cf9b724257fc813c13924672f491e8c92775557f8",
+  "start_time": "2025-01-01",
+  "end_time": "2026-10-02",
+  "assets": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "SOLUSDT",
+    "BNBUSDT"
+  ],
+  "strategy_version": "DonchianBreakoutStrategy_55_20 (Turtle System 2, entry 55, exit 20, initial SL 2.0*ATR)",
+  "execution_version": "Deterministic Backtester (Next-bar open entry, 0.05% fee, 0.03% slippage, 1% fixed fractional risk, 30% max exposure cap, 3% daily circuit breaker)",
+  "feature_schema_version": "2.0.0 (14 snapshot features + 9 pre-breakout sequence/regime features: compression_duration_bars, natr_percentile_55, range_contraction_ratio, channel_tightness_to_atr, resistance_touch_count, pre_breakout_runup_5b, volume_trend_slope_10b, volume_percentile_55, macro_btc_natr_percentile_55 + 3 provenance timestamps)",
+  "reconciliation_status": "100% exact trade-by-trade match with Frozen Backtest Engine trade logs",
+  "trade_population_definition": "Sequential trades executed by frozen strategy upon breakout signals from flat cash state.",
+  "row_count": 123,
+  "statistics": {
+    "win_rate_pct": 30.08,
+    "mean_realized_r": 0.2175,
+    "median_realized_r": -1.0371,
+    "total_net_pnl_usd": 80.93
+  }
+}

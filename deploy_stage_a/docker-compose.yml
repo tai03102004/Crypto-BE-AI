@@ -1,0 +1,14 @@
+services:
+  crypto-ai-shadow:
+    build: .
+    container_name: crypto-ai-shadow-stage-a
+    restart: always
+    volumes:
+      - ./logs:/app/logs
+    environment:
+      - PYTHONUNBUFFERED=1
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

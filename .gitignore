@@ -42,3 +42,8 @@ next-env.d.ts
 
 
 python/config/*.json
+.venv/
+__pycache__/
+*.pyc
+backtest/data/cache/
+

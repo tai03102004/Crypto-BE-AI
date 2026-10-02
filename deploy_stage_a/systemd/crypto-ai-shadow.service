@@ -1,0 +1,16 @@
+[Unit]
+Description=Crypto AI Shadow Runner (Stage A Daemon)
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/crypto-ai-shadow
+ExecStart=/opt/crypto-ai-shadow/.venv/bin/python -u live_shadow_runner.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/opt/crypto-ai-shadow/logs/daemon_stdout.log
+StandardError=append:/opt/crypto-ai-shadow/logs/daemon_stderr.log
+
+[Install]
+WantedBy=multi-user.target

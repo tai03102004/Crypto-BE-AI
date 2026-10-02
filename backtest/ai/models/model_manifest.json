@@ -1,0 +1,118 @@
+{
+  "model_name": "Frozen_Negative_Veto_Ridge_v1",
+  "version": "1.0.0",
+  "created_at": "2026-10-02T16:20:00Z",
+  "status": "CANDIDATE_FOR_SHADOW_PAPER_TRADING",
+  "training_metadata": {
+    "period_start": "2022-01-01",
+    "period_end": "2024-12-31",
+    "total_training_trades": 193,
+    "assets": [
+      "BTCUSDT",
+      "ETHUSDT",
+      "SOLUSDT",
+      "BNBUSDT"
+    ],
+    "target": "target_realized_r"
+  },
+  "hyperparameters": {
+    "model_type": "sklearn.linear_model.Ridge",
+    "alpha": 500.0,
+    "random_state": 42,
+    "fit_intercept": true
+  },
+  "features": {
+    "feature_count": 23,
+    "snapshot_14": [
+      "channel_width_pct",
+      "channel_width_change",
+      "breakout_magnitude_pct",
+      "breakout_close_position",
+      "dist_to_ema200_pct",
+      "ema50_slope_5",
+      "natr",
+      "atr_expansion",
+      "vol_ratio",
+      "breakout_volume_zscore",
+      "asset_ret_24h",
+      "asset_ret_7d",
+      "btc_ret_24h",
+      "btc_natr"
+    ],
+    "sequence_9": [
+      "compression_duration_bars",
+      "natr_percentile_55",
+      "range_contraction_ratio",
+      "channel_tightness_to_atr",
+      "resistance_touch_count",
+      "pre_breakout_runup_5b",
+      "volume_trend_slope_10b",
+      "volume_percentile_55",
+      "macro_btc_natr_percentile_55"
+    ],
+    "all_features": [
+      "channel_width_pct",
+      "channel_width_change",
+      "breakout_magnitude_pct",
+      "breakout_close_position",
+      "dist_to_ema200_pct",
+      "ema50_slope_5",
+      "natr",
+      "atr_expansion",
+      "vol_ratio",
+      "breakout_volume_zscore",
+      "asset_ret_24h",
+      "asset_ret_7d",
+      "btc_ret_24h",
+      "btc_natr",
+      "compression_duration_bars",
+      "natr_percentile_55",
+      "range_contraction_ratio",
+      "channel_tightness_to_atr",
+      "resistance_touch_count",
+      "pre_breakout_runup_5b",
+      "volume_trend_slope_10b",
+      "volume_percentile_55",
+      "macro_btc_natr_percentile_55"
+    ]
+  },
+  "decision_rule": {
+    "threshold_type": "in_sample_20th_percentile",
+    "threshold_r": 0.3560245357269035,
+    "rule": "veto if predicted_r < threshold_r else pass"
+  },
+  "artifacts": {
+    "scaler_filename": "frozen_scaler_v1.joblib",
+    "scaler_sha256": "82d8548d7f874f06f6260f90afd804461e2d07c4dd064461d9233db51c968f88",
+    "model_filename": "frozen_ridge_v1.joblib",
+    "model_sha256": "9d893633631a8044c796f9953cab362482932aa934841d78238f55815ffb17e8"
+  },
+  "model_parameters": {
+    "intercept": 0.8594951871433442,
+    "coefficients": {
+      "channel_width_pct": -0.05344124716838627,
+      "channel_width_change": -0.013693373722975279,
+      "breakout_magnitude_pct": 0.03508554495949775,
+      "breakout_close_position": -0.05067448619640206,
+      "dist_to_ema200_pct": 0.022489017683564747,
+      "ema50_slope_5": -0.026220171906184826,
+      "natr": -0.08960906919204732,
+      "atr_expansion": -0.02925820348475179,
+      "vol_ratio": -0.018808578690303262,
+      "breakout_volume_zscore": 0.018852820701539336,
+      "asset_ret_24h": -0.01925087359227175,
+      "asset_ret_7d": -0.02480261239738565,
+      "btc_ret_24h": -0.09777296494915358,
+      "btc_natr": -0.20562251354914304,
+      "compression_duration_bars": 0.13004592635298048,
+      "natr_percentile_55": 0.08229549307227017,
+      "range_contraction_ratio": -0.164534590239357,
+      "channel_tightness_to_atr": 0.07996956556798278,
+      "resistance_touch_count": 0.22011924704335406,
+      "pre_breakout_runup_5b": -0.057133480040744734,
+      "volume_trend_slope_10b": -0.11467763866309982,
+      "volume_percentile_55": 0.019410730645449157,
+      "macro_btc_natr_percentile_55": 0.038694838112056346
+    }
+  }
+}

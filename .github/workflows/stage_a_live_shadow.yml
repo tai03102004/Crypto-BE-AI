@@ -1,0 +1,57 @@
+name: "Stage A: AI Veto Live Shadow Runner"
+
+on:
+  schedule:
+    # Runs 5 minutes past every 4th hour UTC (00:05, 04:05, 08:05, 12:05, 16:05, 20:05 UTC)
+    # Perfectly timed right after each Binance 4H candle close
+    - cron: '5 0,4,8,12,16,20 * * *'
+  workflow_dispatch: # Allows manual trigger at any time from GitHub UI
+
+permissions:
+  contents: write
+
+concurrency:
+  group: stage-a-live-shadow
+  cancel-in-progress: false
+
+jobs:
+  run-shadow-cycle:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: "deploy_stage_a/requirements.txt"
+
+      - name: Install Dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r deploy_stage_a/requirements.txt
+
+      - name: Verify Frozen Model & Scaler Hashes
+        run: |
+          python deploy_stage_a/verify_artifacts.py
+
+      - name: Execute Live Shadow Cycle (4H Candle Observation)
+        run: |
+          python deploy_stage_a/live_shadow_runner.py --once
+
+      - name: Commit Telemetry and State
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add deploy_stage_a/logs/
+          if git diff --staged --quiet; then
+            echo "No state or telemetry updates on this candle. Market FLAT / WAITING."
+          else
+            git commit -m "chore(stage-a): live shadow telemetry update [skip ci]"
+            git pull --rebase origin $GITHUB_REF_NAME
+            git push
+          fi
