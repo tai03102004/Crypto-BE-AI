@@ -145,7 +145,8 @@ def run_stage_a_audit_suite():
     # -------------------------------------------------------------------------
     # 9. Deduplication Check
     # -------------------------------------------------------------------------
-    runner.processed_signals.add("SOLUSDT_2026-10-02 04:00:00")
+    latest_candle_time = str(df_btc["timestamp"].iloc[-1])
+    runner.processed_signals.add(f"SOLUSDT_{latest_candle_time}")
     runner.candle_cache["SOLUSDT"] = df_btc.copy()
     runner.candle_cache["SOLUSDT"].loc[runner.candle_cache["SOLUSDT"].index[-1], "close"] = 999999.0
     detections = runner.scan_for_breakouts()
@@ -170,7 +171,7 @@ def run_stage_a_audit_suite():
 
     # Re-initialize fresh runner from the same log directory
     fresh_runner = LiveShadowRunner(log_dir=test_log_dir)
-    assert "SOLUSDT_2026-10-02 04:00:00" in fresh_runner.processed_signals, "Processed signals not restored"
+    assert f"SOLUSDT_{latest_candle_time}" in fresh_runner.processed_signals, "Processed signals not restored"
     assert "BNBUSDT" in fresh_runner.active_trades, "Active trades not restored"
     print("[10/14] ✅ Restart Resilience: State persists across runner restarts without losing active trades or repeating signals.")
     passed_checks += 1

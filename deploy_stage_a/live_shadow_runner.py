@@ -1,4 +1,5 @@
 import sys
+import os
 import time
 import json
 from pathlib import Path
@@ -18,6 +19,27 @@ class LiveShadowRunner:
     """
 
     BINANCE_KLINES_URL = "https://api.binance.com/api/v3/klines"
+
+    def send_telegram_alert(self, message: str) -> bool:
+        """Sends real-time HTML notification via Telegram Bot if credentials are configured."""
+        token = os.environ.get("TELEGRAM_BOT_TOKEN")
+        chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+        if not token or not chat_id:
+            return False
+        try:
+            url = f"https://api.telegram.org/bot{token}/sendMessage"
+            payload = {
+                "chat_id": chat_id,
+                "text": message,
+                "parse_mode": "HTML",
+                "disable_web_page_preview": True
+            }
+            res = requests.post(url, json=payload, timeout=10)
+            return res.status_code == 200
+        except Exception as e:
+            print(f"⚠️ [Telegram Alert Warning] Could not send notification: {e}")
+            return False
+
 
     def __init__(
         self,
@@ -204,6 +226,22 @@ class LiveShadowRunner:
 
                 print(f"🔔 [TRADE OUTCOME RECORDED] {latest_time} | {symbol} exited via {exit_reason} at ${exit_price:.2f} (Realized R: {realized_r:+.2f}R)")
 
+                outcome_msg = (
+                    f"🔔 <b>[STAGE A TRADE OUTCOME RECORDED]</b>\n\n"
+                    f"• <b>Asset:</b> #{symbol}\n"
+                    f"• <b>Exit Time:</b> <code>{latest_time}</code>\n"
+                    f"• <b>Reason:</b> <code>{exit_reason}</code> at <code>${exit_price:,.2f}</code>\n"
+                    f"• <b>Realized R:</b> <code>{realized_r:+.2f}R</code>\n"
+                    f"• <b>Baseline PnL:</b> <code>${pnl:+.2f}</code>\n"
+                    f"• <b>Original AI Decision:</b> <b>{trade['ai_decision']}</b>\n"
+                )
+                if trade["ai_decision"] == "VETO":
+                    if pnl < 0:
+                        outcome_msg += f"• <b>Avoided Loss:</b> <code>${-pnl:.2f}</code> (Veto Successful!)\n"
+                    else:
+                        outcome_msg += f"• <b>Opportunity Cost:</b> <code>${pnl:.2f}</code>\n"
+                self.send_telegram_alert(outcome_msg)
+
         for sym in symbols_to_remove:
             del self.active_trades[sym]
 
@@ -289,6 +327,18 @@ class LiveShadowRunner:
                 print(f"   • Close: ${close_t:.2f} > Upper Channel: ${upper_channel:.2f}")
                 print(f"   • Ridge Predicted R: {eval_res['ai_predicted_r']:>+7.3f}R (Threshold: {self.engine.threshold:>+7.3f}R)")
                 print(f"   • Decision: {status_icon}")
+
+                signal_msg = (
+                    f"🚨 <b>[STAGE A BREAKOUT SIGNAL DETECTED]</b>\n\n"
+                    f"• <b>Asset:</b> #{symbol}\n"
+                    f"• <b>Candle Close:</b> <code>{sig_time}</code>\n"
+                    f"• <b>Close Price:</b> <code>${close_t:,.2f}</code> (Channel: <code>${upper_channel:,.2f}</code>)\n"
+                    f"• <b>Ridge Predicted R:</b> <code>{eval_res['ai_predicted_r']:>+7.3f}R</code>\n"
+                    f"• <b>Frozen Threshold:</b> <code>{self.engine.threshold:>+7.3f}R</code>\n"
+                    f"• <b>AI Filter Decision:</b> <b>{status_icon}</b>\n\n"
+                    f"<i>(Stage A Live Observation - Zero Human Intervention)</i>"
+                )
+                self.send_telegram_alert(signal_msg)
 
         return detections
 

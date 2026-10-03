@@ -40,6 +40,9 @@ jobs:
           python deploy_stage_a/verify_artifacts.py
 
       - name: Execute Live Shadow Cycle (4H Candle Observation)
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           python deploy_stage_a/live_shadow_runner.py --once
 
