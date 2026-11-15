@@ -46,4 +46,8 @@ python/config/*.json
 __pycache__/
 *.pyc
 backtest/data/cache/
+*.pid
+*.log
+.env
+!.env.example
 

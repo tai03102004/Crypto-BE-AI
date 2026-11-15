@@ -9,6 +9,22 @@ import requests
 
 from shadow_engine import ShadowExecutionEngine
 from feature_extractor import FeatureExtractor
+from binance_executor import BinanceExecutor
+
+
+def load_env_file():
+    """Simple robust .env loader without third-party dependencies."""
+    for env_path in [Path.cwd() / ".env", Path(__file__).parent / ".env", Path(__file__).parent.parent / ".env"]:
+        if env_path.exists():
+            with open(env_path, "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        k = k.strip()
+                        v = v.strip().strip("'\"")
+                        if k and k not in os.environ:
+                            os.environ[k] = v
 
 
 class LiveShadowRunner:
@@ -55,6 +71,21 @@ class LiveShadowRunner:
 
         self.engine = ShadowExecutionEngine(manifest_path=manifest_path)
         self.feature_extractor = FeatureExtractor(entry_period=55, exit_period=20, atr_multiplier=2.0)
+
+        load_env_file()
+        binance_mode = os.environ.get("BINANCE_MODE", "DRY_RUN")
+        api_key = os.environ.get("BINANCE_API_KEY", "")
+        api_secret = os.environ.get("BINANCE_API_SECRET", "")
+        risk_pct = float(os.environ.get("RISK_PER_TRADE_PCT", "0.01"))
+        max_order = float(os.environ.get("MAX_ORDER_USDT", "500.0"))
+
+        self.executor = BinanceExecutor(
+            api_key=api_key,
+            api_secret=api_secret,
+            mode=binance_mode,
+            risk_per_trade_pct=risk_pct,
+            max_order_usdt=max_order
+        )
 
         if log_dir is None:
             log_dir = Path(__file__).parent / "logs"
@@ -218,6 +249,10 @@ class LiveShadowRunner:
                     "opportunity_cost": pnl if (trade["ai_decision"] == "VETO" and pnl > 0) else 0.0
                 }
 
+                if trade.get("ai_decision") == "PASS":
+                    sell_res = self.executor.place_market_sell(symbol, size)
+                    outcome_record["sell_order_res"] = sell_res
+
                 with open(self.jsonl_log, "a") as f:
                     f.write(json.dumps(outcome_record) + "\n")
 
@@ -305,8 +340,11 @@ class LiveShadowRunner:
 
                 atr_series = self.feature_extractor._compute_atr_series(df["high"], df["low"], df["close"], period=14)
                 atr_t = float(atr_series.iloc[-1])
-                dollar_risk = 2.0 * atr_t
-                size = (1000.0 * 0.01) / dollar_risk if dollar_risk > 0 else 0.0
+                qty, dollar_risk, total_cost = self.executor.calculate_position_size(symbol, close_t, atr_t)
+
+                order_res = None
+                if eval_res["ai_decision"] == "PASS":
+                    order_res = self.executor.place_market_buy(symbol, qty)
 
                 self.active_trades[symbol] = {
                     "breakout_id": sig_key,
@@ -314,9 +352,10 @@ class LiveShadowRunner:
                     "entry_time": sig_time,
                     "entry_price": close_t,
                     "stop_loss": close_t - dollar_risk,
-                    "initial_dollar_risk": size * dollar_risk,
-                    "size": size,
-                    "ai_decision": eval_res["ai_decision"]
+                    "initial_dollar_risk": qty * dollar_risk,
+                    "size": qty,
+                    "ai_decision": eval_res["ai_decision"],
+                    "order_res": order_res
                 }
                 self._save_state()
 
@@ -327,6 +366,7 @@ class LiveShadowRunner:
                 print(f"   • Close: ${close_t:.2f} > Upper Channel: ${upper_channel:.2f}")
                 print(f"   • Ridge Predicted R: {eval_res['ai_predicted_r']:>+7.3f}R (Threshold: {self.engine.threshold:>+7.3f}R)")
                 print(f"   • Decision: {status_icon}")
+                print(f"   • Auto-Execution ({self.executor.mode}): {qty} {symbol} (~${total_cost:.2f})")
 
                 signal_msg = (
                     f"🚨 <b>[STAGE A BREAKOUT SIGNAL DETECTED]</b>\n\n"
@@ -335,8 +375,9 @@ class LiveShadowRunner:
                     f"• <b>Close Price:</b> <code>${close_t:,.2f}</code> (Channel: <code>${upper_channel:,.2f}</code>)\n"
                     f"• <b>Ridge Predicted R:</b> <code>{eval_res['ai_predicted_r']:>+7.3f}R</code>\n"
                     f"• <b>Frozen Threshold:</b> <code>{self.engine.threshold:>+7.3f}R</code>\n"
-                    f"• <b>AI Filter Decision:</b> <b>{status_icon}</b>\n\n"
-                    f"<i>(Stage A Live Observation - Zero Human Intervention)</i>"
+                    f"• <b>AI Filter Decision:</b> <b>{status_icon}</b>\n"
+                    f"• <b>Execution:</b> <code>{self.executor.mode}</code> (Size: <code>{qty} {symbol}</code> ~ <code>${total_cost:.2f}</code>)\n\n"
+                    f"<i>(Auto-Trading Execution Active)</i>"
                 )
                 self.send_telegram_alert(signal_msg)
 
