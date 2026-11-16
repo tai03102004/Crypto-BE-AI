@@ -228,13 +228,13 @@ def execute_buy(symbol: str, qty: float = None):
 
     # Update paper portfolio
     portfolio = DualPaperPortfolio(state_file=paper_state_file)
-    portfolio.on_breakout_entry(
+    portfolio.on_breakout_signal(
         symbol=symbol,
         timestamp=entry_time,
-        price=fill_price,
-        stop_loss=stop_loss,
-        dollar_risk_per_unit=(fill_price - stop_loss),
-        ai_decision="PASS"
+        entry_price=fill_price,
+        atr=(fill_price * 0.02),
+        ai_decision="PASS",
+        predicted_r=0.50
     )
     portfolio.save_state()
 
