@@ -13,6 +13,20 @@ LOGS_DIR = DEPLOY_DIR / "logs"
 PORT = 8501
 
 
+def load_env_file():
+    for env_path in [Path.cwd() / ".env", DEPLOY_DIR / ".env", PROJECT_DIR / ".env"]:
+        if env_path.exists():
+            with open(env_path, "r") as f:
+                for line in f:
+                    line = line.strip()
+                    if line and not line.startswith("#") and "=" in line:
+                        k, v = line.split("=", 1)
+                        k = k.strip()
+                        v = v.strip().strip("'\"")
+                        if k and (k not in os.environ or (v and not os.environ[k])):
+                            os.environ[k] = v
+
+
 class DashboardHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/api/status":
@@ -91,6 +105,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         except Exception:
             pass
 
+        load_env_file()
         mode = os.environ.get("BINANCE_MODE", "DRY_RUN")
 
         return {
