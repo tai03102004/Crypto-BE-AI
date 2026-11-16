@@ -10,6 +10,7 @@ import requests
 from shadow_engine import ShadowExecutionEngine
 from feature_extractor import FeatureExtractor
 from binance_executor import BinanceExecutor
+from paper_portfolio import DualPaperPortfolio
 
 
 def load_env_file():
@@ -98,6 +99,12 @@ class LiveShadowRunner:
         self.processed_signals: set = set()
         self.active_trades: Dict[str, Dict[str, Any]] = {}
 
+        self.paper_portfolio = DualPaperPortfolio(
+            initial_capital=10000.0,
+            risk_per_trade_pct=risk_pct,
+            state_file=self.log_dir / "paper_portfolio_state.json"
+        )
+
         self._load_state()
 
         # Cache of recent candles: {symbol: DataFrame}
@@ -185,6 +192,16 @@ class LiveShadowRunner:
             if not df.empty:
                 self.candle_cache[sym] = df
 
+        # Update mark-to-market valuations for Dual Paper Portfolio
+        curr_prices = {
+            sym: float(df['close'].iloc[-1])
+            for sym, df in self.candle_cache.items()
+            if df is not None and not df.empty
+        }
+        if curr_prices:
+            self.paper_portfolio.update_mark_to_market(curr_prices)
+            self.paper_portfolio.save_state()
+
     def check_active_trade_exits(self) -> List[Dict[str, Any]]:
         """
         Checks if any active trade has hit its Stop Loss or lower channel exit.
@@ -252,6 +269,9 @@ class LiveShadowRunner:
                 if trade.get("ai_decision") == "PASS":
                     sell_res = self.executor.place_market_sell(symbol, size)
                     outcome_record["sell_order_res"] = sell_res
+
+                # Notify Dual Paper Portfolio
+                self.paper_portfolio.on_position_exit(symbol, latest_time, exit_price, exit_reason)
 
                 with open(self.jsonl_log, "a") as f:
                     f.write(json.dumps(outcome_record) + "\n")
@@ -358,6 +378,16 @@ class LiveShadowRunner:
                     "order_res": order_res
                 }
                 self._save_state()
+
+                # Notify Dual Paper Portfolio
+                self.paper_portfolio.on_breakout_signal(
+                    symbol=symbol,
+                    timestamp=sig_time,
+                    entry_price=close_t,
+                    atr=atr_t,
+                    ai_decision=eval_res["ai_decision"],
+                    predicted_r=eval_res["ai_predicted_r"]
+                )
 
                 detections.append(eval_res)
 

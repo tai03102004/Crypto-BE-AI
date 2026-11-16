@@ -48,6 +48,7 @@ __pycache__/
 backtest/data/cache/
 *.pid
 *.log
+deploy_stage_a/logs/
 .env
 !.env.example
 
