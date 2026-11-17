@@ -49,6 +49,22 @@ def get_current_price(symbol: str) -> float:
         return 0.0
 
 
+def send_telegram(msg: str):
+    token = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = os.environ.get("TELEGRAM_CHAT_ID")
+    if token and chat_id:
+        try:
+            import requests
+            requests.post(
+                f"https://api.telegram.org/bot{token}/sendMessage",
+                json={"chat_id": chat_id, "text": msg, "parse_mode": "HTML"},
+                timeout=5
+            )
+        except Exception:
+            pass
+
+
+
 def execute_sell(symbol: str, qty: float = None, reason: str = "MANUAL_CLOSE"):
     load_env()
     api_key = os.environ.get("BINANCE_API_KEY", "")
@@ -163,6 +179,18 @@ def execute_sell(symbol: str, qty: float = None, reason: str = "MANUAL_CLOSE"):
     portfolio.save_state()
     print("📈 DualPaperPortfolio state successfully synchronized.")
 
+    # Send Telegram notification
+    tele_msg = (
+        f"🔔 <b>[BINANCE ORDER] MARKET SELL EXECUTED</b>\n\n"
+        f"• <b>Asset:</b> #{symbol}\n"
+        f"• <b>Quantity:</b> <code>{qty}</code>\n"
+        f"• <b>Exit Price:</b> <code>${fill_price:,.2f}</code>\n"
+        f"• <b>Realized PnL:</b> <code>{'+' if pnl >= 0 else ''}${pnl:.2f} ({'+' if realized_r >= 0 else ''}{realized_r:.2f}R)</code>\n"
+        f"• <b>Reason:</b> <code>{reason}</code>\n"
+        f"• <b>Order ID:</b> <code>{order_id}</code>\n"
+    )
+    send_telegram(tele_msg)
+
     return True
 
 
@@ -239,6 +267,18 @@ def execute_buy(symbol: str, qty: float = None):
     portfolio.save_state()
 
     print(f"✅ [SUCCESS] Bought {qty} {symbol} at ${fill_price:.2f} | Order ID: {order_id}")
+
+    # Send Telegram notification
+    tele_msg = (
+        f"🛒 <b>[BINANCE ORDER] MARKET BUY EXECUTED</b>\n\n"
+        f"• <b>Asset:</b> #{symbol}\n"
+        f"• <b>Quantity:</b> <code>{qty}</code>\n"
+        f"• <b>Entry Price:</b> <code>${fill_price:,.2f}</code>\n"
+        f"• <b>Stop Loss:</b> <code>${stop_loss:,.2f}</code>\n"
+        f"• <b>Order ID:</b> <code>{order_id}</code>\n"
+    )
+    send_telegram(tele_msg)
+
     return True
 
 
