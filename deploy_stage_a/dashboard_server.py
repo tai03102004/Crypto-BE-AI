@@ -2,7 +2,8 @@
 """
 Zero-dependency Multi-Timeframe Web Dashboard Server for Crypto-BE-AI.
 Visualizes Stage A & Stage C (Dual Paper Portfolio, Live Multi-Timeframe Shadow Runner [15m, 1h, 4h],
-Binance Testnet / Live Execution, Active Trades, and Breakout Radar).
+Binance Testnet / Live Execution, Active Trades, Stop Loss / Take Profit (+2R/3R),
+Capital & Risk Management Accounting, and Breakout Radar).
 Serves at http://localhost:8501
 """
 
@@ -174,7 +175,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             except Exception:
                 pass
 
-        # Enhance Active Trades with live prices & unrealized PnL
+        # Enhance Active Trades with live prices, SL, TP (+2R / +3R), R:R, and Capital Metrics
         enhanced_active_trades = []
         for trade_key, t in active_trades.items():
             sym = t.get("asset", trade_key.split("_")[0])
@@ -183,8 +184,21 @@ class DashboardHandler(BaseHTTPRequestHandler):
             entry_p = float(t.get("entry_price", curr_p))
             sz = float(t.get("size", 0))
             unreal_pnl = (curr_p - entry_p) * sz
-            init_risk = float(t.get("initial_dollar_risk", 1.0))
+            
+            sl = float(t.get("stop_loss", entry_p * 0.96))
+            dollar_risk_per_coin = max(0.0001, entry_p - sl)
+            tp_2r = round(entry_p + 2.0 * dollar_risk_per_coin, 2)
+            tp_3r = round(entry_p + 3.0 * dollar_risk_per_coin, 2)
+            pos_value = round(sz * curr_p, 2)
+            risk_usd = round(dollar_risk_per_coin * sz, 2)
+            reward_usd = round((tp_2r - entry_p) * sz, 2)
+            
+            init_risk = float(t.get("initial_dollar_risk", risk_usd))
             unreal_r = unreal_pnl / init_risk if init_risk > 0 else 0.0
+
+            sl_dist_pct = round((sl - curr_p) / curr_p * 100, 2) if curr_p > 0 else 0.0
+            tp_dist_pct = round((tp_2r - curr_p) / curr_p * 100, 2) if curr_p > 0 else 0.0
+
             enhanced_active_trades.append({
                 "trade_key": trade_key,
                 "symbol": sym,
@@ -193,7 +207,15 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 "entry_price": entry_p,
                 "current_price": curr_p,
                 "size": sz,
-                "stop_loss": float(t.get("stop_loss", 0)),
+                "position_value_usdt": pos_value,
+                "stop_loss": sl,
+                "sl_dist_pct": sl_dist_pct,
+                "take_profit_2r": tp_2r,
+                "take_profit_3r": tp_3r,
+                "tp_dist_pct": tp_dist_pct,
+                "risk_amount_usdt": risk_usd,
+                "reward_amount_usdt": reward_usd,
+                "rr_ratio": "1 : 2.0",
                 "unrealized_pnl_usd": round(unreal_pnl, 2),
                 "unrealized_r": round(unreal_r, 2),
                 "ai_decision": t.get("ai_decision", "PASS")
@@ -216,11 +238,26 @@ class DashboardHandler(BaseHTTPRequestHandler):
         except Exception:
             pass
 
+        # Capital & Risk Accounting
+        in_trade_value_usdt = sum(t["position_value_usdt"] for t in enhanced_active_trades)
+        total_account_nav = binance_balance_usdt + in_trade_value_usdt
+        total_capital_at_risk = sum(t["risk_amount_usdt"] for t in enhanced_active_trades)
+        capital_utilization_pct = (in_trade_value_usdt / total_account_nav * 100) if total_account_nav > 0 else 0.0
+
         return {
             "mode": mode,
             "api_key_set": api_key_set,
             "is_running": is_running,
             "pid": pid,
+            "capital_overview": {
+                "total_nav_usdt": round(total_account_nav, 2),
+                "free_usdt": round(binance_balance_usdt, 2),
+                "in_trade_value_usdt": round(in_trade_value_usdt, 2),
+                "capital_utilization_pct": round(capital_utilization_pct, 2),
+                "total_capital_at_risk_usdt": round(total_capital_at_risk, 2),
+                "risk_per_trade_rule": "1.0% (2.0 × ATR)",
+                "max_order_cap": f"${os.environ.get('MAX_ORDER_USDT', '500.0')}"
+            },
             "binance_balance_usdt": binance_balance_usdt,
             "radars": radars,
             "radar": radars.get("1h", []),
@@ -235,7 +272,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Crypto-BE-AI | Multi-Timeframe Quant Trading Dashboard</title>
+  <title>Crypto-BE-AI | Multi-Timeframe Quant Trading & Risk Dashboard</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
@@ -256,7 +293,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
           <span class="bg-indigo-500/20 text-indigo-400 text-xs px-2.5 py-0.5 rounded-full font-semibold border border-indigo-500/30">MULTI-TIMEFRAME</span>
           <span id="mode-badge" class="bg-amber-500/20 text-amber-400 text-xs px-2.5 py-0.5 rounded-full font-semibold border border-amber-500/30 mono">MODE: TESTNET</span>
         </div>
-        <p class="text-xs text-slate-400 mt-1">Multi-Timeframe Engine [15M Scalp | 1H Intraday | 4H Macro Trend] & Binance Execution</p>
+        <p class="text-xs text-slate-400 mt-1">Multi-Timeframe Engine [15M Scalp | 1H Intraday | 4H Macro Trend] & Dynamic Risk Sizing</p>
       </div>
       <div class="flex items-center space-x-4 mt-3 sm:mt-0 text-xs mono">
         <div class="bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700">
@@ -274,11 +311,56 @@ class DashboardHandler(BaseHTTPRequestHandler):
       </div>
     </header>
 
+    <!-- Capital & Risk Management Accounting Bar -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      
+      <!-- Total NAV -->
+      <div class="bg-slate-900/80 border border-slate-800 rounded-xl p-4 shadow-lg">
+        <div class="flex items-center justify-between text-xs text-slate-400">
+          <span class="font-semibold uppercase tracking-wider">💼 Tổng Tài Sản (NAV)</span>
+          <span class="bg-slate-800 px-2 py-0.5 rounded text-[10px] text-slate-300">Tiền + Coin</span>
+        </div>
+        <div class="text-2xl font-bold text-white mono mt-2" id="nav-total">$0.00</div>
+        <div class="text-[11px] text-slate-400 mt-1">Giá trị ròng toàn bộ danh mục</div>
+      </div>
+
+      <!-- Free Cash -->
+      <div class="bg-slate-900/80 border border-emerald-900/30 rounded-xl p-4 shadow-lg">
+        <div class="flex items-center justify-between text-xs text-emerald-400">
+          <span class="font-semibold uppercase tracking-wider">💵 Tiền Mặt Khả Dụng</span>
+          <span class="bg-emerald-500/10 text-emerald-300 px-2 py-0.5 rounded text-[10px]">Free Cash</span>
+        </div>
+        <div class="text-2xl font-bold text-emerald-400 mono mt-2" id="nav-free">$0.00</div>
+        <div class="text-[11px] text-slate-400 mt-1">Sẵn sàng để mở vị thế mới</div>
+      </div>
+
+      <!-- In-Trade Capital -->
+      <div class="bg-slate-900/80 border border-indigo-900/30 rounded-xl p-4 shadow-lg">
+        <div class="flex items-center justify-between text-xs text-indigo-400">
+          <span class="font-semibold uppercase tracking-wider">🪙 Vốn Đang Mở Lệnh</span>
+          <span class="bg-indigo-500/10 text-indigo-300 px-2 py-0.5 rounded text-[10px]" id="nav-util">0.0%</span>
+        </div>
+        <div class="text-2xl font-bold text-indigo-300 mono mt-2" id="nav-intrade">$0.00</div>
+        <div class="text-[11px] text-slate-400 mt-1">Đang phân bổ trong các coin</div>
+      </div>
+
+      <!-- Total Capital at Risk -->
+      <div class="bg-slate-900/80 border border-amber-900/30 rounded-xl p-4 shadow-lg">
+        <div class="flex items-center justify-between text-xs text-amber-400">
+          <span class="font-semibold uppercase tracking-wider">🛡️ Rủi Ro Tối Đa (At Risk)</span>
+          <span class="bg-amber-500/10 text-amber-300 px-2 py-0.5 rounded text-[10px]">1% Rule</span>
+        </div>
+        <div class="text-2xl font-bold text-amber-300 mono mt-2" id="nav-risk">$0.00</div>
+        <div class="text-[11px] text-slate-400 mt-1">Tối đa mất nếu dính toàn bộ SL</div>
+      </div>
+
+    </div>
+
     <!-- Interactive Multi-Timeframe Execution Hub -->
     <div class="bg-slate-900/90 border border-indigo-900/40 rounded-xl p-4 shadow-xl flex flex-wrap items-center justify-between gap-4">
       <div class="flex items-center space-x-2">
         <span class="text-xs font-bold text-indigo-400 uppercase tracking-wider">⚡ Multi-Timeframe Execution Hub:</span>
-        <span class="text-xs text-slate-400">Execute rapid test orders across timeframes (15m, 1h, 4h)</span>
+        <span class="text-xs text-slate-400">Test orders dynamically size based on 1% equity risk and 2.0x ATR</span>
       </div>
       <div class="flex items-center space-x-2.5">
         <button onclick="triggerOrder('buy', 'ETHUSDT', '1h')" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold py-1.5 px-3 rounded-lg transition shadow-md flex items-center space-x-1">
@@ -290,6 +372,40 @@ class DashboardHandler(BaseHTTPRequestHandler):
         <button onclick="triggerOrder('buy', 'BTCUSDT', '4h')" class="bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold py-1.5 px-3 rounded-lg transition shadow-md flex items-center space-x-1">
           <span>🛒 Buy BTC (4H)</span>
         </button>
+      </div>
+    </div>
+
+    <!-- Active Positions Section with Full Risk & TP Parameters -->
+    <div class="bg-slate-900/80 border border-amber-900/30 rounded-xl p-5 shadow-lg">
+      <div class="flex justify-between items-center mb-4">
+        <div class="flex items-center space-x-2">
+          <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
+          <h2 class="text-sm font-semibold text-white uppercase tracking-wider">🎯 Active Open Positions (Vị Thế Đang Mở)</h2>
+        </div>
+        <div class="flex items-center space-x-3">
+          <span class="text-xs text-slate-400 mono">Quản Lý Vốn: <strong class="text-emerald-400">1% Rủi Ro / Lệnh</strong></span>
+          <span class="text-xs text-slate-500 mono" id="active-count">0 Open Positions</span>
+        </div>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs">
+          <thead>
+            <tr class="text-slate-400 border-b border-slate-800 pb-2">
+              <th class="py-2">Asset & TF</th>
+              <th>Entry Price</th>
+              <th>Current Price</th>
+              <th>Size & Giá Trị</th>
+              <th>🛑 Stop Loss</th>
+              <th>🎯 Take Profit (+2R)</th>
+              <th>Tỷ Lệ R:R</th>
+              <th>Unrealized PnL</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="active-trades-table-body" class="divide-y divide-slate-800/60 mono">
+            <tr><td colspan="9" class="py-4 text-center text-slate-500">No active positions open. Status: 100% FLAT in Cash.</td></tr>
+          </tbody>
+        </table>
       </div>
     </div>
 
@@ -329,36 +445,6 @@ class DashboardHandler(BaseHTTPRequestHandler):
         <div class="text-[11px] text-slate-500 mt-2">Empirical excess return of AI gating</div>
       </div>
 
-    </div>
-
-    <!-- Active Positions Section -->
-    <div class="bg-slate-900/80 border border-amber-900/30 rounded-xl p-5 shadow-lg">
-      <div class="flex justify-between items-center mb-4">
-        <div class="flex items-center space-x-2">
-          <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
-          <h2 class="text-sm font-semibold text-white uppercase tracking-wider">🎯 Active Open Positions</h2>
-        </div>
-        <span class="text-xs text-slate-500 mono" id="active-count">0 Open Positions</span>
-      </div>
-      <div class="overflow-x-auto">
-        <table class="w-full text-left text-xs">
-          <thead>
-            <tr class="text-slate-400 border-b border-slate-800 pb-2">
-              <th class="py-2">Asset & TF</th>
-              <th>Entry Time</th>
-              <th>Entry Price</th>
-              <th>Current Price</th>
-              <th>Size</th>
-              <th>Stop Loss</th>
-              <th>Unrealized PnL</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody id="active-trades-table-body" class="divide-y divide-slate-800/60 mono">
-            <tr><td colspan="8" class="py-4 text-center text-slate-500">No active positions open. Status: 100% FLAT in Cash.</td></tr>
-          </tbody>
-        </table>
-      </div>
     </div>
 
     <!-- Chart & Multi-Timeframe Radar Section -->
@@ -550,6 +636,16 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
         document.getElementById('binance-usdt').innerText = '$' + data.binance_balance_usdt.toLocaleString(undefined, {minimumFractionDigits: 2});
 
+        // Capital Accounting Overview
+        if (data.capital_overview) {
+          const cap = data.capital_overview;
+          document.getElementById('nav-total').innerText = '$' + cap.total_nav_usdt.toLocaleString(undefined, {minimumFractionDigits: 2});
+          document.getElementById('nav-free').innerText = '$' + cap.free_usdt.toLocaleString(undefined, {minimumFractionDigits: 2});
+          document.getElementById('nav-intrade').innerText = '$' + cap.in_trade_value_usdt.toLocaleString(undefined, {minimumFractionDigits: 2});
+          document.getElementById('nav-util').innerText = cap.capital_utilization_pct.toFixed(1) + '% NAV';
+          document.getElementById('nav-risk').innerText = '$' + cap.total_capital_at_risk_usdt.toFixed(2);
+        }
+
         // Portfolio Stats
         if (data.portfolio && data.portfolio.baseline) {
           const b = data.portfolio.baseline;
@@ -577,7 +673,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
           }
         }
 
-        // Active Trades
+        // Active Trades with SL, TP (+2R), R:R, and Notional
         const activeContainer = document.getElementById('active-trades-table-body');
         document.getElementById('active-count').innerText = `${data.active_trades ? data.active_trades.length : 0} Open Positions`;
         if (data.active_trades && data.active_trades.length > 0) {
@@ -587,11 +683,23 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 <span>#${t.symbol}</span>
                 <span class="bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-1.5 py-0.5 rounded text-[10px] mono ml-1.5">${t.timeframe ? t.timeframe.toUpperCase() : '1H'}</span>
               </td>
-              <td class="text-slate-400">${t.entry_time || 'N/A'}</td>
-              <td>$${t.entry_price.toLocaleString()}</td>
+              <td class="text-slate-300">$${t.entry_price.toLocaleString()}</td>
               <td class="font-semibold text-white">$${t.current_price.toLocaleString()}</td>
-              <td>${t.size}</td>
-              <td class="text-rose-400">$${t.stop_loss.toLocaleString()}</td>
+              <td>
+                <span class="text-slate-200 font-semibold">${t.size}</span>
+                <span class="text-[10px] text-slate-500 block">~$${t.position_value_usdt}</span>
+              </td>
+              <td>
+                <span class="text-rose-400 font-semibold">$${t.stop_loss.toLocaleString()}</span>
+                <span class="text-[10px] text-rose-500/80 block">${t.sl_dist_pct}% ($${t.risk_amount_usdt})</span>
+              </td>
+              <td>
+                <span class="text-emerald-400 font-semibold">$${t.take_profit_2r.toLocaleString()}</span>
+                <span class="text-[10px] text-emerald-500/80 block">+${t.tp_dist_pct}% (+$${t.reward_amount_usdt})</span>
+              </td>
+              <td>
+                <span class="bg-slate-800 px-2 py-0.5 rounded text-[11px] font-bold text-indigo-300 border border-slate-700">${t.rr_ratio}</span>
+              </td>
               <td class="${t.unrealized_pnl_usd >= 0 ? 'text-emerald-400' : 'text-rose-400'} font-bold">
                 ${t.unrealized_pnl_usd >= 0 ? '+' : ''}$${t.unrealized_pnl_usd.toFixed(2)} (${t.unrealized_r >= 0 ? '+' : ''}${t.unrealized_r.toFixed(2)}R)
               </td>
@@ -603,7 +711,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
             </tr>
           `).join('');
         } else {
-          activeContainer.innerHTML = `<tr><td colspan="8" class="py-4 text-center text-slate-500">No active positions open. Status: 100% FLAT in Cash.</td></tr>`;
+          activeContainer.innerHTML = `<tr><td colspan="9" class="py-4 text-center text-slate-500">No active positions open. Status: 100% FLAT in Cash.</td></tr>`;
         }
 
         // Render Radars
