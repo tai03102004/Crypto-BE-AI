@@ -1,10 +1,13 @@
 services:
-  crypto-ai-shadow:
+  crypto-ai-trader:
     build: .
-    container_name: crypto-ai-shadow-stage-a
+    container_name: crypto-be-ai
     restart: always
+    ports:
+      - "8501:8501"
     volumes:
       - ./logs:/app/logs
+      - ../.env:/app/.env:ro
     environment:
       - PYTHONUNBUFFERED=1
     logging:
