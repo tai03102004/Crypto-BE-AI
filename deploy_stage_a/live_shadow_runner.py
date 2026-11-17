@@ -62,11 +62,19 @@ class LiveShadowRunner:
         self,
         symbols: List[str] = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"],
         interval: str = "4h",
+        intervals: Optional[List[str]] = None,
         manifest_path: Optional[Path] = None,
         log_dir: Optional[Path] = None
     ):
         self.symbols = symbols
         self.interval = interval
+        if intervals is not None:
+            self.intervals = intervals
+        elif interval != "4h":
+            self.intervals = [interval]
+        else:
+            # Default to Multi-Timeframe: 15m, 1h, 4h
+            self.intervals = ["15m", "1h", "4h"]
         if manifest_path is None:
             manifest_path = Path(__file__).parent / "models" / "model_manifest.json"
 
@@ -157,18 +165,19 @@ class LiveShadowRunner:
         with open(self.state_file, "w") as f:
             json.dump(state, f, indent=2)
 
-    def fetch_recent_klines(self, symbol: str, limit: int = 150) -> pd.DataFrame:
+    def fetch_recent_klines(self, symbol: str, interval: Optional[str] = None, limit: int = 150) -> pd.DataFrame:
         """
         Fetches the most recent closed candles from Binance Public REST API.
         Excludes the active unclosed candle (last row).
         """
-        params = {"symbol": symbol, "interval": self.interval, "limit": limit}
+        iv = interval if interval is not None else self.interval
+        params = {"symbol": symbol, "interval": iv, "limit": limit}
         try:
             resp = requests.get(self.BINANCE_KLINES_URL, params=params, timeout=10)
             resp.raise_for_status()
             data = resp.json()
         except Exception as e:
-            print(f"⚠️ [API Warning] Failed to fetch {symbol} klines: {e}")
+            print(f"⚠️ [API Warning] Failed to fetch {symbol} ({iv}) klines: {e}")
             return pd.DataFrame()
 
         rows = []
@@ -186,18 +195,19 @@ class LiveShadowRunner:
         return df
 
     def update_data(self):
-        """Fetches recent candles for all tracked assets."""
-        for sym in self.symbols:
-            df = self.fetch_recent_klines(sym, limit=120)
-            if not df.empty:
-                self.candle_cache[sym] = df
+        """Fetches recent candles for all tracked assets across all active intervals."""
+        curr_prices = {}
+        for iv in self.intervals:
+            for sym in self.symbols:
+                df = self.fetch_recent_klines(sym, interval=iv, limit=120)
+                if not df.empty:
+                    self.candle_cache[f"{sym}_{iv}"] = df
+                    if sym not in self.candle_cache or iv == self.interval:
+                        self.candle_cache[sym] = df
+                    if sym not in curr_prices:
+                        curr_prices[sym] = float(df['close'].iloc[-1])
 
         # Update mark-to-market valuations for Dual Paper Portfolio
-        curr_prices = {
-            sym: float(df['close'].iloc[-1])
-            for sym, df in self.candle_cache.items()
-            if df is not None and not df.empty
-        }
         if curr_prices:
             self.paper_portfolio.update_mark_to_market(curr_prices)
             self.paper_portfolio.save_state()
@@ -210,8 +220,10 @@ class LiveShadowRunner:
         exited_trades = []
         symbols_to_remove = []
 
-        for symbol, trade in self.active_trades.items():
-            df = self.candle_cache.get(symbol, None)
+        for trade_key, trade in list(self.active_trades.items()):
+            symbol = trade.get("asset", trade_key.split("_")[0])
+            tf = trade.get("timeframe", "4h")
+            df = self.candle_cache.get(f"{symbol}_{tf}", self.candle_cache.get(symbol, None))
             if df is None or df.empty:
                 continue
 
@@ -219,7 +231,7 @@ class LiveShadowRunner:
             latest_time = str(latest_bar["timestamp"])
             entry_time = trade["entry_time"]
 
-            if pd.to_datetime(latest_time) <= pd.to_datetime(entry_time):
+            if pd.to_datetime(latest_time, utc=True) <= pd.to_datetime(entry_time, utc=True):
                 continue
 
             if len(df) >= 21:
@@ -254,6 +266,7 @@ class LiveShadowRunner:
                     "event_type": "TRADE_OUTCOME",
                     "breakout_id": trade["breakout_id"],
                     "asset": symbol,
+                    "timeframe": tf,
                     "entry_time": entry_time,
                     "outcome_timestamp": latest_time,
                     "exit_price": exit_price,
@@ -277,13 +290,13 @@ class LiveShadowRunner:
                     f.write(json.dumps(outcome_record) + "\n")
 
                 exited_trades.append(outcome_record)
-                symbols_to_remove.append(symbol)
+                symbols_to_remove.append(trade_key)
 
-                print(f"🔔 [TRADE OUTCOME RECORDED] {latest_time} | {symbol} exited via {exit_reason} at ${exit_price:.2f} (Realized R: {realized_r:+.2f}R)")
+                print(f"🔔 [TRADE OUTCOME RECORDED] {latest_time} | {symbol} [{tf.upper()}] exited via {exit_reason} at ${exit_price:.2f} (Realized R: {realized_r:+.2f}R)")
 
                 outcome_msg = (
                     f"🔔 <b>[STAGE A TRADE OUTCOME RECORDED]</b>\n\n"
-                    f"• <b>Asset:</b> #{symbol}\n"
+                    f"• <b>Asset:</b> #{symbol} (<code>{tf.upper()}</code>)\n"
                     f"• <b>Exit Time:</b> <code>{latest_time}</code>\n"
                     f"• <b>Reason:</b> <code>{exit_reason}</code> at <code>${exit_price:,.2f}</code>\n"
                     f"• <b>Realized R:</b> <code>{realized_r:+.2f}R</code>\n"
@@ -298,7 +311,8 @@ class LiveShadowRunner:
                 self.send_telegram_alert(outcome_msg)
 
         for sym in symbols_to_remove:
-            del self.active_trades[sym]
+            if sym in self.active_trades:
+                del self.active_trades[sym]
 
         if symbols_to_remove:
             self._save_state()
@@ -307,109 +321,116 @@ class LiveShadowRunner:
 
     def scan_for_breakouts(self) -> List[Dict[str, Any]]:
         """
-        Scans current bar t across all assets for Donchian 55 breakout triggers.
+        Scans current bar across all assets and all active intervals for Donchian 55 triggers.
         """
-        btc_df = self.candle_cache.get("BTCUSDT", None)
         detections = []
-
         self.check_active_trade_exits()
 
-        for symbol in self.symbols:
-            df = self.candle_cache.get(symbol, None)
-            if df is None or len(df) < 60:
-                continue
+        for iv in self.intervals:
+            btc_df = self.candle_cache.get(f"BTCUSDT_{iv}", self.candle_cache.get("BTCUSDT", None))
 
-            t_idx = len(df) - 1
-            bar_t = df.iloc[t_idx]
-            sig_time = str(bar_t["timestamp"])
-            sig_key = f"{symbol}_{sig_time}"
+            for symbol in self.symbols:
+                df = self.candle_cache.get(f"{symbol}_{iv}", self.candle_cache.get(symbol, None))
+                if df is None or len(df) < 60:
+                    continue
 
-            if sig_key in self.processed_signals:
-                continue
+                t_idx = len(df) - 1
+                bar_t = df.iloc[t_idx]
+                sig_time = str(bar_t["timestamp"])
+                sig_key = f"{symbol}_{iv}_{sig_time}"
+                trade_key = f"{symbol}_{iv}"
 
-            if symbol in self.active_trades:
-                continue
+                if sig_key in self.processed_signals:
+                    continue
 
-            prior_highs = df["high"].iloc[-56:-1]
-            upper_channel = float(prior_highs.max())
-            close_t = float(bar_t["close"])
+                if trade_key in self.active_trades or symbol in self.active_trades:
+                    continue
 
-            if close_t > upper_channel:
-                self.processed_signals.add(sig_key)
+                prior_highs = df["high"].iloc[-56:-1]
+                upper_channel = float(prior_highs.max())
+                close_t = float(bar_t["close"])
 
-                features = self.feature_extractor.extract_features_at_t(
-                    t_idx=t_idx,
-                    df=df,
-                    btc_df=btc_df if symbol != "BTCUSDT" else None
-                )
+                if close_t > upper_channel:
+                    self.processed_signals.add(sig_key)
 
-                eval_res = self.engine.evaluate_candidate(
-                    timestamp=sig_time,
-                    asset=symbol,
-                    breakout_id=sig_key,
-                    features=features,
-                    baseline_signal="BUY",
-                    baseline_entry_price=close_t,
-                    eventual_realized_r=None,
-                    eventual_pnl=None,
-                    outcome_timestamp=None
-                )
+                    features = self.feature_extractor.extract_features_at_t(
+                        t_idx=t_idx,
+                        df=df,
+                        btc_df=btc_df if symbol != "BTCUSDT" else None
+                    )
 
-                with open(self.jsonl_log, "a") as f:
-                    f.write(json.dumps(eval_res) + "\n")
+                    eval_res = self.engine.evaluate_candidate(
+                        timestamp=sig_time,
+                        asset=symbol,
+                        breakout_id=sig_key,
+                        features=features,
+                        baseline_signal="BUY",
+                        baseline_entry_price=close_t,
+                        eventual_realized_r=None,
+                        eventual_pnl=None,
+                        outcome_timestamp=None
+                    )
+                    eval_res["timeframe"] = iv
 
-                atr_series = self.feature_extractor._compute_atr_series(df["high"], df["low"], df["close"], period=14)
-                atr_t = float(atr_series.iloc[-1])
-                qty, dollar_risk, total_cost = self.executor.calculate_position_size(symbol, close_t, atr_t)
+                    with open(self.jsonl_log, "a") as f:
+                        f.write(json.dumps(eval_res) + "\n")
 
-                order_res = None
-                if eval_res["ai_decision"] == "PASS":
-                    order_res = self.executor.place_market_buy(symbol, qty)
+                    atr_series = self.feature_extractor._compute_atr_series(df["high"], df["low"], df["close"], period=14)
+                    atr_t = float(atr_series.iloc[-1])
+                    qty, dollar_risk, total_cost = self.executor.calculate_position_size(symbol, close_t, atr_t)
 
-                self.active_trades[symbol] = {
-                    "breakout_id": sig_key,
-                    "asset": symbol,
-                    "entry_time": sig_time,
-                    "entry_price": close_t,
-                    "stop_loss": close_t - dollar_risk,
-                    "initial_dollar_risk": qty * dollar_risk,
-                    "size": qty,
-                    "ai_decision": eval_res["ai_decision"],
-                    "order_res": order_res
-                }
-                self._save_state()
+                    order_res = None
+                    if eval_res["ai_decision"] == "PASS":
+                        order_res = self.executor.place_market_buy(symbol, qty)
 
-                # Notify Dual Paper Portfolio
-                self.paper_portfolio.on_breakout_signal(
-                    symbol=symbol,
-                    timestamp=sig_time,
-                    entry_price=close_t,
-                    atr=atr_t,
-                    ai_decision=eval_res["ai_decision"],
-                    predicted_r=eval_res["ai_predicted_r"]
-                )
+                    self.active_trades[trade_key] = {
+                        "breakout_id": sig_key,
+                        "asset": symbol,
+                        "timeframe": iv,
+                        "entry_time": sig_time,
+                        "entry_price": close_t,
+                        "stop_loss": close_t - dollar_risk,
+                        "initial_dollar_risk": qty * dollar_risk,
+                        "size": qty,
+                        "ai_decision": eval_res["ai_decision"],
+                        "order_res": order_res
+                    }
+                    self._save_state()
 
-                detections.append(eval_res)
+                    # Notify Dual Paper Portfolio
+                    self.paper_portfolio.on_breakout_signal(
+                        symbol=symbol,
+                        timestamp=sig_time,
+                        entry_price=close_t,
+                        atr=atr_t,
+                        ai_decision=eval_res["ai_decision"],
+                        predicted_r=eval_res["ai_predicted_r"]
+                    )
 
-                status_icon = "🟢 PASS (TRADE)" if eval_res["ai_decision"] == "PASS" else "🔴 VETO (AVOID)"
-                print(f"\n🚨 [BREAKOUT SIGNAL DETECTED] {sig_time} | {symbol:<8}")
-                print(f"   • Close: ${close_t:.2f} > Upper Channel: ${upper_channel:.2f}")
-                print(f"   • Ridge Predicted R: {eval_res['ai_predicted_r']:>+7.3f}R (Threshold: {self.engine.threshold:>+7.3f}R)")
-                print(f"   • Decision: {status_icon}")
-                print(f"   • Auto-Execution ({self.executor.mode}): {qty} {symbol} (~${total_cost:.2f})")
+                    detections.append(eval_res)
 
-                signal_msg = (
-                    f"🚨 <b>[STAGE A BREAKOUT SIGNAL DETECTED]</b>\n\n"
-                    f"• <b>Asset:</b> #{symbol}\n"
-                    f"• <b>Candle Close:</b> <code>{sig_time}</code>\n"
-                    f"• <b>Close Price:</b> <code>${close_t:,.2f}</code> (Channel: <code>${upper_channel:,.2f}</code>)\n"
-                    f"• <b>Ridge Predicted R:</b> <code>{eval_res['ai_predicted_r']:>+7.3f}R</code>\n"
-                    f"• <b>Frozen Threshold:</b> <code>{self.engine.threshold:>+7.3f}R</code>\n"
-                    f"• <b>AI Filter Decision:</b> <b>{status_icon}</b>\n"
-                    f"• <b>Execution:</b> <code>{self.executor.mode}</code> (Size: <code>{qty} {symbol}</code> ~ <code>${total_cost:.2f}</code>)\n\n"
-                    f"<i>(Auto-Trading Execution Active)</i>"
-                )
-                self.send_telegram_alert(signal_msg)
+                    status_icon = "🟢 PASS (TRADE)" if eval_res["ai_decision"] == "PASS" else "🔴 VETO (AVOID)"
+                    print(f"\n🚨 [BREAKOUT SIGNAL DETECTED] [{iv.upper()}] {sig_time} | {symbol:<8}")
+                    print(f"   • Close: ${close_t:.2f} > Upper Channel: ${upper_channel:.2f}")
+                    print(f"   • Ridge Predicted R: {eval_res['ai_predicted_r']:>+7.3f}R (Threshold: {self.engine.threshold:>+7.3f}R)")
+                    print(f"   • Decision: {status_icon}")
+                    print(f"   • Auto-Execution ({self.executor.mode}): {qty} {symbol} (~${total_cost:.2f})")
+
+                    signal_msg = (
+                        f"🚨 <b>[STAGE A BREAKOUT SIGNAL DETECTED - {iv.upper()}]</b>\n\n"
+                        f"• <b>Asset:</b> #{symbol}\n"
+                        f"• <b>Timeframe:</b> <code>{iv.upper()}</code>\n"
+                        f"• <b>Candle Close:</b> <code>{sig_time}</code>\n"
+                        f"• <b>Close Price:</b> <code>${close_t:,.2f}</code> (Channel: <code>${upper_channel:,.2f}</code>)\n"
+                        f"• <b>Ridge Predicted R:</b> <code>{eval_res['ai_predicted_r']:>+7.3f}R</code>\n"
+                        f"• <b>Frozen Threshold:</b> <code>{self.engine.threshold:>+7.3f}R</code>\n"
+                        f"• <b>AI Filter Decision:</b> <b>{status_icon}</b>\n"
+                        f"• <b>Execution:</b> <code>{self.executor.mode}</code> (Size: <code>{qty} {symbol}</code> ~ <code>${total_cost:.2f}</code>)\n\n"
+                        f"<i>(Auto-Trading Execution Active)</i>"
+                    )
+                    self.send_telegram_alert(signal_msg)
+
+        return detections
 
         return detections
 
@@ -419,14 +440,14 @@ def run_live_daemon(poll_interval_seconds: int = 60):
     Continuous Live Shadow Runner Daemon.
     Monitors 4h candle closes across BTC, ETH, SOL, BNB continuously.
     """
+    runner = LiveShadowRunner()
     print("=" * 95)
-    print("  LIVE SHADOW RUNNER DAEMON STARTED: STAGE A OBSERVATION MODE")
-    print(f"  Assets: BTCUSDT | ETHUSDT | SOLUSDT | BNBUSDT | Timeframe: 4h")
+    print("  LIVE SHADOW RUNNER DAEMON STARTED: MULTI-TIMEFRAME MODE")
+    print(f"  Assets: {', '.join(runner.symbols)} | Timeframes: {', '.join(runner.intervals)}")
     print(f"  Polling Interval: Every {poll_interval_seconds}s for new closed candles")
     print("  Governance: Zero Model Interventions | Frozen Threshold = +0.356025R")
     print("=" * 95)
 
-    runner = LiveShadowRunner()
     last_candle_times: Dict[str, str] = {}
 
     while True:
@@ -440,16 +461,15 @@ def run_live_daemon(poll_interval_seconds: int = 60):
 
             new_candle_detected = False
 
-            for sym in runner.symbols:
-                df = runner.candle_cache.get(sym, None)
+            for cache_key, df in runner.candle_cache.items():
                 if df is not None and not df.empty:
                     latest_ts = str(df["timestamp"].iloc[-1])
-                    if last_candle_times.get(sym) != latest_ts:
+                    if last_candle_times.get(cache_key) != latest_ts:
                         new_candle_detected = True
-                        last_candle_times[sym] = latest_ts
+                        last_candle_times[cache_key] = latest_ts
 
             if new_candle_detected:
-                print(f"\n⏰ [{pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}] New 4h closed candle detected. Scanning markets...")
+                print(f"\n⏰ [{pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}] New closed candle detected. Scanning multi-timeframe markets...")
                 detections = runner.scan_for_breakouts()
                 if not detections:
                     print("   ℹ️ No new breakouts triggered on this candle. Status: FLAT / WAITING.")

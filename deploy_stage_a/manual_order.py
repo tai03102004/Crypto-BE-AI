@@ -79,12 +79,22 @@ def execute_sell(symbol: str, qty: float = None, reason: str = "MANUAL_CLOSE"):
 
     # Load active runner state
     active_trade = {}
+    found_key = None
     runner_state = {"processed_signals": [], "active_trades": {}}
     if runner_state_file.exists():
         try:
             with open(runner_state_file, "r") as f:
                 runner_state = json.load(f)
-                active_trade = runner_state.get("active_trades", {}).get(symbol, {})
+                trades = runner_state.get("active_trades", {})
+                if symbol in trades:
+                    found_key = symbol
+                    active_trade = trades[symbol]
+                else:
+                    for k, v in trades.items():
+                        if k == symbol or v.get("asset") == symbol:
+                            found_key = k
+                            active_trade = v
+                            break
         except Exception as e:
             print(f"⚠️ Error reading runner state: {e}")
 
@@ -118,6 +128,7 @@ def execute_sell(symbol: str, qty: float = None, reason: str = "MANUAL_CLOSE"):
     initial_risk = float(active_trade.get("initial_dollar_risk", (entry_price * 0.02 * qty)))
     pnl = (fill_price - entry_price) * qty
     realized_r = pnl / initial_risk if initial_risk > 0 else 0.0
+    tf = active_trade.get("timeframe", "1h")
 
     print(f"📊 Trade Summary: Entry: ${entry_price:.2f} -> Exit: ${fill_price:.2f}")
     print(f"💰 Realized PnL: {'+' if pnl >= 0 else ''}${pnl:.2f} ({'+' if realized_r >= 0 else ''}{realized_r:.2f}R)")
@@ -125,11 +136,11 @@ def execute_sell(symbol: str, qty: float = None, reason: str = "MANUAL_CLOSE"):
     exit_time = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime())
 
     # 1. Update live_runner_state.json
-    if symbol in runner_state.get("active_trades", {}):
-        del runner_state["active_trades"][symbol]
+    if found_key and found_key in runner_state.get("active_trades", {}):
+        del runner_state["active_trades"][found_key]
         with open(runner_state_file, "w") as f:
             json.dump(runner_state, f, indent=2)
-        print(f"💾 Removed {symbol} from active trades in runner state.")
+        print(f"💾 Removed {found_key} from active trades in runner state.")
 
     # 2. Record trade outcome in live_shadow_telemetry.jsonl
     outcome_record = {
@@ -194,7 +205,7 @@ def execute_sell(symbol: str, qty: float = None, reason: str = "MANUAL_CLOSE"):
     return True
 
 
-def execute_buy(symbol: str, qty: float = None):
+def execute_buy(symbol: str, qty: float = None, timeframe: str = "1h"):
     load_env()
     api_key = os.environ.get("BINANCE_API_KEY", "")
     api_secret = os.environ.get("BINANCE_API_SECRET", "")
@@ -214,7 +225,7 @@ def execute_buy(symbol: str, qty: float = None):
         # Default ~ $100 notional
         qty = executor.format_quantity(symbol, 100.0 / price)
 
-    print(f"🚀 Initiating MARKET BUY for {qty} {symbol} at ~${price:.2f} (Mode: {mode})...")
+    print(f"🚀 Initiating MARKET BUY for {qty} {symbol} [{timeframe.upper()}] at ~${price:.2f} (Mode: {mode})...")
     res = executor.place_market_buy(symbol, qty)
 
     if res.get("status") not in ["FILLED", "SUCCESS"] and not res.get("is_dry_run"):
@@ -226,12 +237,16 @@ def execute_buy(symbol: str, qty: float = None):
     order_id = res.get("orderId", "MANUAL_BUY")
     entry_time = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime())
 
-    stop_loss = round(fill_price * 0.96, 2)  # 4% stop loss
+    # Stop loss distance adjusts by timeframe (4% for 4h, 2% for 1h, 1% for 15m)
+    sl_pct = 0.04 if timeframe == "4h" else (0.02 if timeframe == "1h" else 0.01)
+    stop_loss = round(fill_price * (1.0 - sl_pct), 2)
     dollar_risk = (fill_price - stop_loss) * qty
 
+    trade_key = f"{symbol}_{timeframe}"
     trade_info = {
-        "breakout_id": f"MANUAL_{symbol}_{int(time.time())}",
+        "breakout_id": f"MANUAL_{symbol}_{timeframe}_{int(time.time())}",
         "asset": symbol,
+        "timeframe": timeframe,
         "entry_time": entry_time,
         "entry_price": fill_price,
         "stop_loss": stop_loss,
@@ -250,7 +265,7 @@ def execute_buy(symbol: str, qty: float = None):
         except Exception:
             pass
 
-    runner_state.setdefault("active_trades", {})[symbol] = trade_info
+    runner_state.setdefault("active_trades", {})[trade_key] = trade_info
     with open(runner_state_file, "w") as f:
         json.dump(runner_state, f, indent=2)
 

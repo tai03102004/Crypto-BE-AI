@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Zero-dependency Real-time Web Dashboard Server for Crypto-BE-AI.
-Visualizes Stage A & Stage C (Dual Paper Portfolio, Live Shadow Runner,
-Binance Testnet / Live Execution, Active Trades, and Market Breakout Radar).
+Zero-dependency Multi-Timeframe Web Dashboard Server for Crypto-BE-AI.
+Visualizes Stage A & Stage C (Dual Paper Portfolio, Live Multi-Timeframe Shadow Runner [15m, 1h, 4h],
+Binance Testnet / Live Execution, Active Trades, and Breakout Radar).
 Serves at http://localhost:8501
 """
 
@@ -64,6 +64,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 body = json.loads(post_data.decode("utf-8"))
                 action = body.get("action", "").lower()
                 symbol = body.get("symbol", "").upper()
+                timeframe = body.get("timeframe", "1h").lower()
                 qty = body.get("qty", None)
                 if qty is not None:
                     qty = float(qty)
@@ -71,8 +72,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 from manual_order import execute_buy, execute_sell
 
                 if action == "buy":
-                    success = execute_buy(symbol, qty)
-                    res = {"success": success, "message": f"Executed BUY for {symbol}"}
+                    success = execute_buy(symbol, qty, timeframe=timeframe)
+                    res = {"success": success, "message": f"Executed BUY for {symbol} [{timeframe.upper()}]"}
                 elif action == "sell":
                     success = execute_sell(symbol, qty, reason="DASHBOARD_MANUAL_CLOSE")
                     res = {"success": success, "message": f"Executed SELL for {symbol}"}
@@ -114,7 +115,6 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if pid_file.exists():
             try:
                 pid = int(pid_file.read_text().strip())
-                # Check process existence
                 is_running = (os.system(f"kill -0 {pid} 2>/dev/null") == 0)
             except Exception:
                 pass
@@ -145,35 +145,40 @@ class DashboardHandler(BaseHTTPRequestHandler):
             except Exception:
                 pass
 
-        # Real-time Binance Klines & Breakout Radar
+        # Multi-Timeframe Binance Breakout Radars (15m, 1h, 4h)
         symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"]
-        radar = []
+        radars = {"15m": [], "1h": [], "4h": []}
         current_prices = {}
-        try:
-            for s in symbols:
-                res = requests.get(
-                    "https://api.binance.com/api/v3/klines",
-                    params={"symbol": s, "interval": "4h", "limit": 60},
-                    timeout=3
-                ).json()
-                if isinstance(res, list) and len(res) >= 56:
-                    highs = [float(k[2]) for k in res[-56:-1]]
-                    upper = max(highs)
-                    close = float(res[-1][4])
-                    current_prices[s] = close
-                    dist_pct = (close - upper) / upper * 100
-                    radar.append({
-                        "symbol": s,
-                        "close": close,
-                        "upper_channel": upper,
-                        "dist_pct": round(dist_pct, 2)
-                    })
-        except Exception:
-            pass
+        for iv in ["15m", "1h", "4h"]:
+            try:
+                for s in symbols:
+                    res = requests.get(
+                        "https://api.binance.com/api/v3/klines",
+                        params={"symbol": s, "interval": iv, "limit": 60},
+                        timeout=3
+                    ).json()
+                    if isinstance(res, list) and len(res) >= 56:
+                        highs = [float(k[2]) for k in res[-56:-1]]
+                        upper = max(highs)
+                        close = float(res[-1][4])
+                        if s not in current_prices:
+                            current_prices[s] = close
+                        dist_pct = (close - upper) / upper * 100
+                        radars[iv].append({
+                            "symbol": s,
+                            "interval": iv,
+                            "close": close,
+                            "upper_channel": upper,
+                            "dist_pct": round(dist_pct, 2)
+                        })
+            except Exception:
+                pass
 
         # Enhance Active Trades with live prices & unrealized PnL
         enhanced_active_trades = []
-        for sym, t in active_trades.items():
+        for trade_key, t in active_trades.items():
+            sym = t.get("asset", trade_key.split("_")[0])
+            tf = t.get("timeframe", "1h")
             curr_p = current_prices.get(sym, float(t.get("entry_price", 0)))
             entry_p = float(t.get("entry_price", curr_p))
             sz = float(t.get("size", 0))
@@ -181,7 +186,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
             init_risk = float(t.get("initial_dollar_risk", 1.0))
             unreal_r = unreal_pnl / init_risk if init_risk > 0 else 0.0
             enhanced_active_trades.append({
+                "trade_key": trade_key,
                 "symbol": sym,
+                "timeframe": tf,
                 "entry_time": t.get("entry_time"),
                 "entry_price": entry_p,
                 "current_price": curr_p,
@@ -215,7 +222,8 @@ class DashboardHandler(BaseHTTPRequestHandler):
             "is_running": is_running,
             "pid": pid,
             "binance_balance_usdt": binance_balance_usdt,
-            "radar": radar,
+            "radars": radars,
+            "radar": radars.get("1h", []),
             "active_trades": enhanced_active_trades,
             "closed_trades": list(reversed(closed_trades)),
             "portfolio": portfolio_data,
@@ -227,7 +235,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Crypto-BE-AI | Quant Trading & Live Stage C Dashboard</title>
+  <title>Crypto-BE-AI | Multi-Timeframe Quant Trading Dashboard</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
@@ -245,10 +253,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
         <div class="flex items-center space-x-3">
           <div class="w-3 h-3 rounded-full bg-emerald-500 animate-pulse"></div>
           <h1 class="text-xl font-bold tracking-tight text-white">CRYPTO-BE-AI</h1>
-          <span class="bg-indigo-500/20 text-indigo-400 text-xs px-2.5 py-0.5 rounded-full font-semibold border border-indigo-500/30">STAGE C LIVE</span>
+          <span class="bg-indigo-500/20 text-indigo-400 text-xs px-2.5 py-0.5 rounded-full font-semibold border border-indigo-500/30">MULTI-TIMEFRAME</span>
           <span id="mode-badge" class="bg-amber-500/20 text-amber-400 text-xs px-2.5 py-0.5 rounded-full font-semibold border border-amber-500/30 mono">MODE: TESTNET</span>
         </div>
-        <p class="text-xs text-slate-400 mt-1">Dual Paper Portfolio & Binance Testnet Execution Engine</p>
+        <p class="text-xs text-slate-400 mt-1">Multi-Timeframe Engine [15M Scalp | 1H Intraday | 4H Macro Trend] & Binance Execution</p>
       </div>
       <div class="flex items-center space-x-4 mt-3 sm:mt-0 text-xs mono">
         <div class="bg-slate-800/80 px-3 py-1.5 rounded-lg border border-slate-700">
@@ -266,18 +274,21 @@ class DashboardHandler(BaseHTTPRequestHandler):
       </div>
     </header>
 
-    <!-- Interactive Execution Bar -->
+    <!-- Interactive Multi-Timeframe Execution Hub -->
     <div class="bg-slate-900/90 border border-indigo-900/40 rounded-xl p-4 shadow-xl flex flex-wrap items-center justify-between gap-4">
       <div class="flex items-center space-x-2">
-        <span class="text-xs font-bold text-indigo-400 uppercase tracking-wider">⚡ Test Execution Hub:</span>
-        <span class="text-xs text-slate-400">Quickly place or close Binance Testnet orders to verify end-to-end flow</span>
+        <span class="text-xs font-bold text-indigo-400 uppercase tracking-wider">⚡ Multi-Timeframe Execution Hub:</span>
+        <span class="text-xs text-slate-400">Execute rapid test orders across timeframes (15m, 1h, 4h)</span>
       </div>
-      <div class="flex items-center space-x-3">
-        <button onclick="triggerOrder('buy', 'ETHUSDT')" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold py-1.5 px-3.5 rounded-lg transition shadow-md flex items-center space-x-1.5">
-          <span>🛒 Buy Test ETH (~$90)</span>
+      <div class="flex items-center space-x-2.5">
+        <button onclick="triggerOrder('buy', 'ETHUSDT', '1h')" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold py-1.5 px-3 rounded-lg transition shadow-md flex items-center space-x-1">
+          <span>🛒 Buy ETH (1H)</span>
         </button>
-        <button onclick="triggerOrder('buy', 'SOLUSDT')" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-1.5 px-3.5 rounded-lg transition shadow-md flex items-center space-x-1.5">
-          <span>🛒 Buy Test SOL (~$80)</span>
+        <button onclick="triggerOrder('buy', 'SOLUSDT', '15m')" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-1.5 px-3 rounded-lg transition shadow-md flex items-center space-x-1">
+          <span>🛒 Buy SOL (15M)</span>
+        </button>
+        <button onclick="triggerOrder('buy', 'BTCUSDT', '4h')" class="bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold py-1.5 px-3 rounded-lg transition shadow-md flex items-center space-x-1">
+          <span>🛒 Buy BTC (4H)</span>
         </button>
       </div>
     </div>
@@ -333,7 +344,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         <table class="w-full text-left text-xs">
           <thead>
             <tr class="text-slate-400 border-b border-slate-800 pb-2">
-              <th class="py-2">Asset</th>
+              <th class="py-2">Asset & TF</th>
               <th>Entry Time</th>
               <th>Entry Price</th>
               <th>Current Price</th>
@@ -350,7 +361,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
       </div>
     </div>
 
-    <!-- Chart & Radar Section -->
+    <!-- Chart & Multi-Timeframe Radar Section -->
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
       
       <!-- Equity Curve Chart -->
@@ -364,11 +375,19 @@ class DashboardHandler(BaseHTTPRequestHandler):
         </div>
       </div>
 
-      <!-- Live Market Radar -->
+      <!-- Live Multi-Timeframe Radar -->
       <div class="bg-slate-900/70 border border-slate-800 rounded-xl p-5 shadow-lg">
-        <h2 class="text-sm font-semibold text-slate-200 uppercase tracking-wider mb-4">
-          Market Breakout Radar (4H)
-        </h2>
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-sm font-semibold text-slate-200 uppercase tracking-wider">
+            Breakout Radar
+          </h2>
+          <!-- Timeframe Switcher Tabs -->
+          <div class="flex items-center space-x-1 bg-slate-800/90 p-1 rounded-lg border border-slate-700 text-[11px] mono">
+            <button onclick="setRadarTf('15m')" id="tab-15m" class="px-2 py-0.5 rounded text-slate-400 hover:text-white font-semibold transition">15M</button>
+            <button onclick="setRadarTf('1h')" id="tab-1h" class="px-2 py-0.5 rounded bg-indigo-600 text-white font-semibold transition shadow">1H</button>
+            <button onclick="setRadarTf('4h')" id="tab-4h" class="px-2 py-0.5 rounded text-slate-400 hover:text-white font-semibold transition">4H</button>
+          </div>
+        </div>
         <div id="radar-list" class="space-y-3">
           <div class="text-xs text-slate-500">Scanning markets...</div>
         </div>
@@ -385,7 +404,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         <thead>
           <tr class="text-slate-400 border-b border-slate-800 pb-2">
             <th class="py-2">Outcome Time</th>
-            <th>Asset</th>
+            <th>Asset & TF</th>
             <th>Size</th>
             <th>Entry Price</th>
             <th>Exit Price</th>
@@ -405,6 +424,51 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
   <script>
     let chartInstance = null;
+    let currentRadarTf = '1h';
+    let globalRadars = { '15m': [], '1h': [], '4h': [] };
+
+    function setRadarTf(tf) {
+      currentRadarTf = tf;
+      ['15m', '1h', '4h'].forEach(t => {
+        const el = document.getElementById('tab-' + t);
+        if (t === tf) {
+          el.className = 'px-2 py-0.5 rounded bg-indigo-600 text-white font-semibold transition shadow';
+        } else {
+          el.className = 'px-2 py-0.5 rounded text-slate-400 hover:text-white font-semibold transition';
+        }
+      });
+      renderRadar();
+    }
+
+    function renderRadar() {
+      const radarContainer = document.getElementById('radar-list');
+      const items = globalRadars[currentRadarTf] || [];
+      if (!items || items.length === 0) {
+        radarContainer.innerHTML = `<div class="text-xs text-slate-500">Scanning ${currentRadarTf.toUpperCase()} markets...</div>`;
+        return;
+      }
+
+      radarContainer.innerHTML = items.map(r => `
+        <div class="bg-slate-800/40 border border-slate-800 rounded-lg p-3">
+          <div class="flex justify-between items-center text-xs">
+            <div class="flex items-center space-x-1.5">
+              <span class="font-bold text-white mono">#${r.symbol}</span>
+              <span class="bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 text-[10px] px-1 rounded mono">${currentRadarTf.toUpperCase()}</span>
+            </div>
+            <span class="text-slate-400 mono">$${r.close.toLocaleString()}</span>
+          </div>
+          <div class="flex justify-between items-center text-xs mt-2 text-slate-400">
+            <span>55-High: $${r.upper_channel.toLocaleString()}</span>
+            <span class="font-semibold ${r.dist_pct >= 0 ? 'text-emerald-400' : 'text-slate-400'} mono">
+              ${r.dist_pct > 0 ? '+' : ''}${r.dist_pct}%
+            </span>
+          </div>
+          <div class="w-full bg-slate-700/40 rounded-full h-1.5 mt-2 overflow-hidden">
+            <div class="bg-indigo-500 h-1.5 rounded-full" style="width: ${Math.max(5, 100 + r.dist_pct * 3)}%"></div>
+          </div>
+        </div>
+      `).join('');
+    }
 
     function initChart() {
       const ctx = document.getElementById('equityChart').getContext('2d');
@@ -447,9 +511,9 @@ class DashboardHandler(BaseHTTPRequestHandler):
       });
     }
 
-    async function triggerOrder(action, symbol) {
+    async function triggerOrder(action, symbol, timeframe = '1h') {
       const confirmMsg = action === 'buy' ? 
-        `Confirm placing MARKET BUY for ${symbol} on Binance Testnet?` : 
+        `Confirm placing MARKET BUY for ${symbol} [${timeframe.toUpperCase()}] on Binance Testnet?` : 
         `Confirm closing position for ${symbol} on Binance Testnet?`;
       if (!confirm(confirmMsg)) return;
 
@@ -457,7 +521,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
         const res = await fetch('/api/order', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: action, symbol: symbol })
+          body: JSON.stringify({ action: action, symbol: symbol, timeframe: timeframe })
         });
         const data = await res.json();
         alert(data.message || (data.success ? 'Success!' : 'Failed: ' + data.error));
@@ -519,7 +583,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
         if (data.active_trades && data.active_trades.length > 0) {
           activeContainer.innerHTML = data.active_trades.map(t => `
             <tr class="hover:bg-slate-800/30">
-              <td class="py-2.5 font-bold text-amber-300">#${t.symbol}</td>
+              <td class="py-2.5 font-bold text-amber-300">
+                <span>#${t.symbol}</span>
+                <span class="bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-1.5 py-0.5 rounded text-[10px] mono ml-1.5">${t.timeframe ? t.timeframe.toUpperCase() : '1H'}</span>
+              </td>
               <td class="text-slate-400">${t.entry_time || 'N/A'}</td>
               <td>$${t.entry_price.toLocaleString()}</td>
               <td class="font-semibold text-white">$${t.current_price.toLocaleString()}</td>
@@ -539,26 +606,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
           activeContainer.innerHTML = `<tr><td colspan="8" class="py-4 text-center text-slate-500">No active positions open. Status: 100% FLAT in Cash.</td></tr>`;
         }
 
-        // Render Radar
-        if (data.radar && data.radar.length > 0) {
-          const radarHtml = data.radar.map(r => `
-            <div class="bg-slate-800/40 border border-slate-800 rounded-lg p-3">
-              <div class="flex justify-between items-center text-xs">
-                <span class="font-bold text-white mono">#${r.symbol}</span>
-                <span class="text-slate-400 mono">$${r.close.toLocaleString()}</span>
-              </div>
-              <div class="flex justify-between items-center text-xs mt-2 text-slate-400">
-                <span>55-High: $${r.upper_channel.toLocaleString()}</span>
-                <span class="font-semibold ${r.dist_pct >= 0 ? 'text-emerald-400' : 'text-slate-400'} mono">
-                  ${r.dist_pct > 0 ? '+' : ''}${r.dist_pct}%
-                </span>
-              </div>
-              <div class="w-full bg-slate-700/40 rounded-full h-1.5 mt-2 overflow-hidden">
-                <div class="bg-indigo-500 h-1.5 rounded-full" style="width: ${Math.max(5, 100 + r.dist_pct * 3)}%"></div>
-              </div>
-            </div>
-          `).join('');
-          document.getElementById('radar-list').innerHTML = radarHtml;
+        // Render Radars
+        if (data.radars) {
+          globalRadars = data.radars;
+          renderRadar();
         }
 
         // Render Closed Trades History
@@ -568,7 +619,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
           closedContainer.innerHTML = data.closed_trades.map(c => `
             <tr class="hover:bg-slate-800/30">
               <td class="py-2 text-slate-400">${c.outcome_timestamp || 'N/A'}</td>
-              <td class="font-bold text-white">#${c.asset}</td>
+              <td class="font-bold text-white">
+                <span>#${c.asset}</span>
+                <span class="bg-slate-700/60 text-slate-300 px-1 py-0.5 rounded text-[10px] mono ml-1">${c.timeframe ? c.timeframe.toUpperCase() : '4H'}</span>
+              </td>
               <td>${c.size || 0.05}</td>
               <td>$${(c.entry_price || 0).toLocaleString()}</td>
               <td class="text-emerald-400 font-semibold">$${(c.exit_price || 0).toLocaleString()}</td>
