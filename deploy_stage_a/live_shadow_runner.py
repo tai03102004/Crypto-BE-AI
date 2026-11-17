@@ -432,6 +432,12 @@ def run_live_daemon(poll_interval_seconds: int = 60):
     while True:
         try:
             runner.update_data()
+
+            # Check exits for any open positions
+            exited_trades = runner.check_active_trade_exits()
+            if exited_trades:
+                print(f"   🔔 Auto-closed {len(exited_trades)} positions.")
+
             new_candle_detected = False
 
             for sym in runner.symbols:
