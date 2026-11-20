@@ -130,11 +130,11 @@ class BinanceExecutor:
 
         return 0.0
 
-    def calculate_position_size(self, symbol: str, current_price: float, atr: float) -> Tuple[float, float, float]:
+    def calculate_position_size(self, symbol: str, current_price: float, atr: float, max_cap: Optional[float] = None, risk_mult: float = 1.0) -> Tuple[float, float, float]:
         """
-        Calculates position size based on 1% equity risk:
+        Calculates position size based on equity risk (default 1%):
           Dollar Risk per Unit = 2.0 * ATR
-          Risk Amount = Balance * risk_per_trade_pct
+          Risk Amount = Balance * risk_per_trade_pct * risk_mult
           Quantity = Risk Amount / Dollar Risk
         Returns: (formatted_qty, dollar_risk_per_unit, total_cost_usdt)
         """
@@ -143,13 +143,14 @@ class BinanceExecutor:
             balance = 100.0  # Fallback minimum
 
         dollar_risk_per_unit = 2.0 * atr if atr > 0 else current_price * 0.03
-        risk_budget = balance * self.risk_per_trade_pct
+        risk_budget = balance * self.risk_per_trade_pct * risk_mult
         raw_qty = risk_budget / dollar_risk_per_unit
 
-        # Apply hard safety cap on total trade notional
+        # Apply safety cap on total trade notional (default $500, or custom max_cap like $250 for 15M)
+        effective_cap = max_cap if max_cap is not None else self.max_order_usdt
         total_cost = raw_qty * current_price
-        if total_cost > self.max_order_usdt:
-            raw_qty = self.max_order_usdt / current_price
+        if total_cost > effective_cap:
+            raw_qty = effective_cap / current_price
 
         qty = self.format_quantity(symbol, raw_qty)
         filt = self.symbol_filters.get(symbol, {"min_qty": 0.0001, "min_notional": 5.0})

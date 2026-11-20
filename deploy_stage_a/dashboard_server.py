@@ -756,7 +756,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
     window.addEventListener('DOMContentLoaded', () => {
       initChart();
       fetchDashboard();
-      setInterval(fetchDashboard, 3000);
+      setInterval(fetchDashboard, 5000);
     });
   </script>
 </body>

@@ -245,6 +245,26 @@ class LiveShadowRunner:
             bar_close = float(latest_bar["close"])
             stop_loss = float(trade["stop_loss"])
 
+            # Safeguard 3 (Option B): Breakeven Lock for 15M (move SL to entry when gain >= +1.0R)
+            if tf == "15m" and not trade.get("breakeven_locked", False):
+                entry_p = float(trade["entry_price"])
+                init_sl = float(trade.get("initial_stop_loss", trade["stop_loss"]))
+                r_dist = entry_p - init_sl
+                if r_dist > 0 and bar_close >= entry_p + r_dist:
+                    trade["stop_loss"] = entry_p
+                    trade["breakeven_locked"] = True
+                    stop_loss = entry_p
+                    self._save_state()
+                    be_msg = (
+                        f"🛡️ <b>[BREAKEVEN LOCKED - 15M]</b>\n\n"
+                        f"• <b>Asset:</b> #{symbol} [15M]\n"
+                        f"• <b>Gain Reached:</b> <code>+1.0R</code> (Price: <code>${bar_close:,.2f}</code>)\n"
+                        f"• <b>New Stop Loss:</b> <code>${entry_p:,.2f}</code> (Breakeven)\n"
+                        f"<i>(Lệnh 15M đã khóa hòa vốn thành công, loại bỏ rủi ro thua lỗ!)</i>"
+                    )
+                    self.send_telegram_alert(be_msg)
+                    print(f"🛡️ [BREAKEVEN LOCKED] {symbol} [15M]: Stop Loss moved to Entry ${entry_p:.2f}")
+
             exit_reason = None
             exit_price = None
 
@@ -372,12 +392,24 @@ class LiveShadowRunner:
                     )
                     eval_res["timeframe"] = iv
 
+                    # Safeguard 1 (Option B): Stricter AI Threshold for 15M (R >= 1.0)
+                    tf_threshold = 1.0 if iv == "15m" else self.engine.threshold
+                    eval_res["tf_threshold"] = tf_threshold
+                    if iv == "15m" and eval_res["ai_predicted_r"] < 1.0:
+                        eval_res["ai_decision"] = "VETO"
+
                     with open(self.jsonl_log, "a") as f:
                         f.write(json.dumps(eval_res) + "\n")
 
                     atr_series = self.feature_extractor._compute_atr_series(df["high"], df["low"], df["close"], period=14)
                     atr_t = float(atr_series.iloc[-1])
-                    qty, dollar_risk, total_cost = self.executor.calculate_position_size(symbol, close_t, atr_t)
+
+                    # Safeguard 2 (Option B): Risk Halving for 15M (0.5% risk, max order cap $250)
+                    max_cap = 250.0 if iv == "15m" else 500.0
+                    risk_mult = 0.5 if iv == "15m" else 1.0
+                    qty, dollar_risk, total_cost = self.executor.calculate_position_size(
+                        symbol, close_t, atr_t, max_cap=max_cap, risk_mult=risk_mult
+                    )
 
                     order_res = None
                     if eval_res["ai_decision"] == "PASS":
@@ -390,7 +422,9 @@ class LiveShadowRunner:
                         "entry_time": sig_time,
                         "entry_price": close_t,
                         "stop_loss": close_t - dollar_risk,
+                        "initial_stop_loss": close_t - dollar_risk,
                         "initial_dollar_risk": qty * dollar_risk,
+                        "breakeven_locked": False,
                         "size": qty,
                         "ai_decision": eval_res["ai_decision"],
                         "order_res": order_res
@@ -412,7 +446,7 @@ class LiveShadowRunner:
                     status_icon = "🟢 PASS (TRADE)" if eval_res["ai_decision"] == "PASS" else "🔴 VETO (AVOID)"
                     print(f"\n🚨 [BREAKOUT SIGNAL DETECTED] [{iv.upper()}] {sig_time} | {symbol:<8}")
                     print(f"   • Close: ${close_t:.2f} > Upper Channel: ${upper_channel:.2f}")
-                    print(f"   • Ridge Predicted R: {eval_res['ai_predicted_r']:>+7.3f}R (Threshold: {self.engine.threshold:>+7.3f}R)")
+                    print(f"   • Ridge Predicted R: {eval_res['ai_predicted_r']:>+7.3f}R (Threshold: {tf_threshold:>+7.3f}R)")
                     print(f"   • Decision: {status_icon}")
                     print(f"   • Auto-Execution ({self.executor.mode}): {qty} {symbol} (~${total_cost:.2f})")
 
@@ -423,10 +457,10 @@ class LiveShadowRunner:
                         f"• <b>Candle Close:</b> <code>{sig_time}</code>\n"
                         f"• <b>Close Price:</b> <code>${close_t:,.2f}</code> (Channel: <code>${upper_channel:,.2f}</code>)\n"
                         f"• <b>Ridge Predicted R:</b> <code>{eval_res['ai_predicted_r']:>+7.3f}R</code>\n"
-                        f"• <b>Frozen Threshold:</b> <code>{self.engine.threshold:>+7.3f}R</code>\n"
+                        f"• <b>Threshold:</b> <code>{tf_threshold:>+7.3f}R</code> (Mode: {'Strict 15M R>=1.0' if iv == '15m' else 'Macro/Intraday'})\n"
                         f"• <b>AI Filter Decision:</b> <b>{status_icon}</b>\n"
                         f"• <b>Execution:</b> <code>{self.executor.mode}</code> (Size: <code>{qty} {symbol}</code> ~ <code>${total_cost:.2f}</code>)\n\n"
-                        f"<i>(Auto-Trading Execution Active)</i>"
+                        f"<i>(Option B: Dynamic Safety Gating Active)</i>"
                     )
                     self.send_telegram_alert(signal_msg)
 
