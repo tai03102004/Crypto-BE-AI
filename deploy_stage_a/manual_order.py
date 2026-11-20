@@ -106,11 +106,16 @@ def execute_sell(symbol: str, qty: float = None, reason: str = "MANUAL_CLOSE"):
             print(f"❌ No active trade recorded for {symbol}, and no --qty specified.")
             return False
 
-    print(f"🚀 Initiating MARKET SELL for {qty} {symbol} (Mode: {mode})...")
-    res = executor.place_market_sell(symbol, qty)
+    is_short = (active_trade.get("side") == "SHORT")
+    if is_short:
+        print(f"🚀 Initiating COVER SHORT (BUY CLOSE) for {qty} {symbol} (Mode: {mode})...")
+        res = executor.close_market_short(symbol, qty)
+    else:
+        print(f"🚀 Initiating MARKET SELL for {qty} {symbol} (Mode: {mode})...")
+        res = executor.place_market_sell(symbol, qty)
 
     if res.get("status") not in ["FILLED", "SUCCESS"] and not res.get("is_dry_run"):
-        print(f"❌ Sell order failed or rejected: {res}")
+        print(f"❌ Order failed or rejected: {res}")
         return False
 
     # Extract fill price
@@ -120,13 +125,14 @@ def execute_sell(symbol: str, qty: float = None, reason: str = "MANUAL_CLOSE"):
     else:
         fill_price = get_current_price(symbol)
 
-    order_id = res.get("orderId", "MANUAL_SELL")
-    print(f"✅ [ORDER FILLED] Sold {qty} {symbol} at ${fill_price:.2f} | Order ID: {order_id}")
+    order_id = res.get("orderId", "MANUAL_CLOSE")
+    action_label = "Covered Short" if is_short else "Sold"
+    print(f"✅ [ORDER FILLED] {action_label} {qty} {symbol} at ${fill_price:.2f} | Order ID: {order_id}")
 
     # Calculate trade metrics
     entry_price = float(active_trade.get("entry_price", fill_price))
     initial_risk = float(active_trade.get("initial_dollar_risk", (entry_price * 0.02 * qty)))
-    pnl = (fill_price - entry_price) * qty
+    pnl = (entry_price - fill_price) * qty if is_short else (fill_price - entry_price) * qty
     realized_r = pnl / initial_risk if initial_risk > 0 else 0.0
     tf = active_trade.get("timeframe", "1h")
 
@@ -297,11 +303,107 @@ def execute_buy(symbol: str, qty: float = None, timeframe: str = "1h"):
     return True
 
 
+def execute_short(symbol: str, qty: float = None, timeframe: str = "1h"):
+    load_env()
+    api_key = os.environ.get("BINANCE_API_KEY", "")
+    api_secret = os.environ.get("BINANCE_API_SECRET", "")
+    mode = os.environ.get("BINANCE_MODE", "TESTNET")
+
+    executor = BinanceExecutor(api_key=api_key, api_secret=api_secret, mode=mode)
+    logs_dir = DEPLOY_DIR / "logs"
+    runner_state_file = logs_dir / "live_runner_state.json"
+    paper_state_file = logs_dir / "paper_portfolio_state.json"
+
+    price = get_current_price(symbol)
+    if price <= 0:
+        print(f"❌ Failed to fetch current price for {symbol}")
+        return False
+
+    if qty is None or qty <= 0:
+        qty = executor.format_quantity(symbol, 100.0 / price)
+
+    print(f"🚀 Initiating MARKET SHORT for {qty} {symbol} [{timeframe.upper()}] at ~${price:.2f} (Mode: {mode})...")
+    res = executor.place_market_short(symbol, qty)
+
+    if res.get("status") not in ["FILLED", "SUCCESS"] and not res.get("is_dry_run"):
+        print(f"❌ Short order failed or rejected: {res}")
+        return False
+
+    fills = res.get("fills", [])
+    fill_price = float(fills[0].get("price", price)) if fills else price
+    order_id = res.get("orderId", "MANUAL_SHORT")
+    entry_time = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime())
+
+    sl_pct = 0.04 if timeframe == "4h" else (0.02 if timeframe == "1h" else 0.01)
+    stop_loss = round(fill_price * (1.0 + sl_pct), 2)
+    dollar_risk = (stop_loss - fill_price) * qty
+
+    trade_key = f"{symbol}_{timeframe}"
+    trade_info = {
+        "breakout_id": f"MANUAL_SHORT_{symbol}_{timeframe}_{int(time.time())}",
+        "asset": symbol,
+        "side": "SHORT",
+        "timeframe": timeframe,
+        "entry_time": entry_time,
+        "entry_price": fill_price,
+        "stop_loss": stop_loss,
+        "initial_stop_loss": stop_loss,
+        "take_profit_2r": round(fill_price * (1.0 - 2.0 * sl_pct), 2),
+        "take_profit_3r": round(fill_price * (1.0 - 3.0 * sl_pct), 2),
+        "initial_dollar_risk": dollar_risk,
+        "breakeven_locked": False,
+        "size": qty,
+        "ai_decision": "PASS",
+        "order_res": res
+    }
+
+    runner_state = {"processed_signals": [], "active_trades": {}}
+    if runner_state_file.exists():
+        try:
+            with open(runner_state_file, "r") as f:
+                runner_state = json.load(f)
+        except Exception:
+            pass
+
+    runner_state.setdefault("active_trades", {})[trade_key] = trade_info
+    with open(runner_state_file, "w") as f:
+        json.dump(runner_state, f, indent=2)
+
+    portfolio = DualPaperPortfolio(state_file=paper_state_file)
+    portfolio.on_breakout_signal(
+        symbol=symbol,
+        timestamp=entry_time,
+        entry_price=fill_price,
+        atr=(fill_price * 0.02),
+        ai_decision="PASS",
+        predicted_r=0.50,
+        side="SHORT"
+    )
+    portfolio.save_state()
+
+    print(f"✅ [SUCCESS] Opened SHORT on {qty} {symbol} at ${fill_price:.2f} | Order ID: {order_id}")
+
+    tele_msg = (
+        f"🔴 <b>[BINANCE ORDER] MARKET SHORT EXECUTED</b>\n\n"
+        f"• <b>Asset:</b> #{symbol} [SHORT]\n"
+        f"• <b>Timeframe:</b> <code>{timeframe.upper()}</code>\n"
+        f"• <b>Quantity:</b> <code>{qty}</code>\n"
+        f"• <b>Entry Price:</b> <code>${fill_price:,.2f}</code>\n"
+        f"• <b>Stop Loss:</b> <code>${stop_loss:,.2f}</code>\n"
+        f"• <b>Take Profit (2R):</b> <code>${round(fill_price * (1.0 - 2.0 * sl_pct), 2):,.2f}</code>\n"
+        f"• <b>Order ID:</b> <code>{order_id}</code>\n"
+    )
+    send_telegram(tele_msg)
+
+    return True
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Manual Order Executor for Crypto-BE-AI")
-    parser.add_argument("action", choices=["buy", "sell"], help="Action: buy or sell")
+    parser.add_argument("action", choices=["buy", "sell", "short"], help="Action: buy, sell, or short")
     parser.add_argument("symbol", type=str, help="Trading pair, e.g., ETHUSDT")
     parser.add_argument("--qty", type=float, default=None, help="Quantity to trade")
+    parser.add_argument("--timeframe", type=str, default="1h", help="Timeframe (15m, 1h, 4h)")
     parser.add_argument("--reason", type=str, default="MANUAL_CLOSE", help="Exit reason")
 
     args = parser.parse_args()
@@ -310,4 +412,6 @@ if __name__ == "__main__":
     if args.action == "sell":
         execute_sell(sym, args.qty, args.reason)
     elif args.action == "buy":
-        execute_buy(sym, args.qty)
+        execute_buy(sym, args.qty, timeframe=args.timeframe)
+    elif args.action == "short":
+        execute_short(sym, args.qty, timeframe=args.timeframe)

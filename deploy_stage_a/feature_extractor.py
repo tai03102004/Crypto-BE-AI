@@ -34,11 +34,13 @@ class FeatureExtractor:
         self,
         t_idx: int,
         df: pd.DataFrame,
-        btc_df: Optional[pd.DataFrame] = None
+        btc_df: Optional[pd.DataFrame] = None,
+        direction: str = "LONG"
     ) -> Dict[str, Any]:
         """
         Extracts 14 snapshot features + 9 sequence features strictly using data <= t.
         Guarantees zero future leakage and matches frozen training schema.
+        Supports symmetric parity transform for direction='SHORT'.
         """
         hist = df.iloc[: t_idx + 1]
         current_bar = hist.iloc[-1]
@@ -51,12 +53,18 @@ class FeatureExtractor:
         # 1. Structure Features
         prior_highs = hist["high"].iloc[- (self.entry_period + 1): -1]
         prior_lows = hist["low"].iloc[- (self.exit_period + 1): -1]
+        prior_lows_55 = hist["low"].iloc[- (self.entry_period + 1): -1]
 
         upper_ch = float(prior_highs.max())
         lower_ch = float(prior_lows.min())
+        lower_ch_55 = float(prior_lows_55.min())
 
         channel_width_pct = ((upper_ch - lower_ch) / close_t) * 100.0 if close_t > 0 else 0.0
-        breakout_magnitude_pct = ((close_t - upper_ch) / upper_ch) * 100.0 if upper_ch > 0 else 0.0
+
+        if direction.upper() == "SHORT":
+            breakout_magnitude_pct = ((lower_ch_55 - close_t) / lower_ch_55) * 100.0 if lower_ch_55 > 0 else 0.0
+        else:
+            breakout_magnitude_pct = ((close_t - upper_ch) / upper_ch) * 100.0 if upper_ch > 0 else 0.0
 
         if len(hist) > self.entry_period + 6:
             p_highs_5 = hist["high"].iloc[- (self.entry_period + 6): -6]
@@ -68,7 +76,10 @@ class FeatureExtractor:
 
         bar_range = high_t - low_t
         if bar_range > 1e-8:
-            breakout_close_position = float(np.clip((close_t - low_t) / bar_range, 0.0, 1.0))
+            if direction.upper() == "SHORT":
+                breakout_close_position = float(np.clip((high_t - close_t) / bar_range, 0.0, 1.0))
+            else:
+                breakout_close_position = float(np.clip((close_t - low_t) / bar_range, 0.0, 1.0))
         else:
             breakout_close_position = 0.5
 
@@ -84,6 +95,11 @@ class FeatureExtractor:
             ema50_slope_5 = ((ema50_t - ema50_series.iloc[-6]) / ema50_series.iloc[-6]) * 100.0
         else:
             ema50_slope_5 = 0.0
+
+        # Parity Transform for Directional Signs if SHORT
+        if direction.upper() == "SHORT":
+            dist_to_ema200_pct = -dist_to_ema200_pct
+            ema50_slope_5 = -ema50_slope_5
 
         # 2. Volatility Features
         atr_series = self._compute_atr_series(hist["high"], hist["low"], hist["close"], period=self.atr_period)
@@ -103,6 +119,10 @@ class FeatureExtractor:
         asset_ret_24h = ((close_t - hist["close"].iloc[-7]) / hist["close"].iloc[-7]) * 100.0 if len(hist) >= 7 else 0.0
         asset_ret_7d = ((close_t - hist["close"].iloc[-43]) / hist["close"].iloc[-43]) * 100.0 if len(hist) >= 43 else 0.0
 
+        if direction.upper() == "SHORT":
+            asset_ret_24h = -asset_ret_24h
+            asset_ret_7d = -asset_ret_7d
+
         # 5. Macro BTC Context Features
         if btc_df is not None:
             btc_hist = btc_df[btc_df["timestamp"] <= signal_timestamp]
@@ -114,12 +134,16 @@ class FeatureExtractor:
             btc_ret_24h = asset_ret_24h
             btc_natr = natr
 
+        if direction.upper() == "SHORT":
+            btc_ret_24h = -btc_ret_24h
+
         # Sequence Features
         sequence_features = self.extract_sequence_features_pre_t(
             t_idx=t_idx,
             df=df,
             signal_timestamp=signal_timestamp,
-            btc_df=btc_df
+            btc_df=btc_df,
+            direction=direction
         )
 
         return {
@@ -147,7 +171,8 @@ class FeatureExtractor:
         t_idx: int,
         df: pd.DataFrame,
         signal_timestamp: Any,
-        btc_df: Optional[pd.DataFrame] = None
+        btc_df: Optional[pd.DataFrame] = None,
+        direction: str = "LONG"
     ) -> Dict[str, Any]:
         """
         Extracts 9 pre-breakout sequence features strictly using data <= t-1.
@@ -190,14 +215,18 @@ class FeatureExtractor:
         ch_width_pre = upper_55_pre - lower_20_pre
         channel_tightness_to_atr = (ch_width_pre / (atr_pre + 1e-8)) if atr_pre > 0 else 0.0
 
-        # 5. resistance_touch_count
-        touches = (high_series.iloc[-55:] >= (0.99 * upper_55_pre)).sum()
-        resistance_touch_count = int(touches)
-
-        # 6. pre_breakout_runup_5b
+        # 5. resistance_touch_count & 6. pre_breakout_runup_5b
         c_t1 = float(close_series.iloc[-1])
         c_t6 = float(close_series.iloc[-6])
-        pre_breakout_runup_5b = float(((c_t1 - c_t6) / c_t6) * 100.0) if c_t6 > 0 else 0.0
+        if direction.upper() == "SHORT":
+            lower_55_pre = float(low_series.iloc[-55:].min())
+            touches = (low_series.iloc[-55:] <= (1.01 * lower_55_pre)).sum()
+            resistance_touch_count = int(touches)
+            pre_breakout_runup_5b = float(((c_t6 - c_t1) / c_t6) * 100.0) if c_t6 > 0 else 0.0
+        else:
+            touches = (high_series.iloc[-55:] >= (0.99 * upper_55_pre)).sum()
+            resistance_touch_count = int(touches)
+            pre_breakout_runup_5b = float(((c_t1 - c_t6) / c_t6) * 100.0) if c_t6 > 0 else 0.0
 
         # 7. volume_trend_slope_10b
         v10 = vol_series.iloc[-10:].values

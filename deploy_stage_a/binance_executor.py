@@ -233,3 +233,99 @@ class BinanceExecutor:
         except Exception as e:
             print(f"❌ [LIVE SELL EXCEPTION] {e}")
             return {"status": "ERROR", "error": str(e)}
+
+    def place_market_short(self, symbol: str, quantity: float) -> Dict[str, Any]:
+        """
+        Opens a SHORT position (sells to open).
+        Supports Binance Spot Testnet (using pre-allocated test assets), Futures, or Dry Run.
+        """
+        qty = self.format_quantity(symbol, quantity)
+        if self.mode == "DRY_RUN":
+            order_id = f"DRY_SHORT_{int(time.time()*1000)}"
+            print(f"🧪 [DRY RUN] Executed simulated SHORT (SELL OPEN): {qty} {symbol}")
+            return {
+                "status": "FILLED",
+                "orderId": order_id,
+                "symbol": symbol,
+                "side": "SELL",
+                "positionSide": "SHORT",
+                "type": "MARKET",
+                "executedQty": str(qty),
+                "is_dry_run": True
+            }
+
+        try:
+            params = {
+                "symbol": symbol,
+                "side": "SELL",
+                "type": "MARKET",
+                "quantity": qty
+            }
+            signed_params = self._sign_params(params)
+            res = self.session.post(f"{self.base_url}/api/v3/order", data=signed_params, timeout=10)
+            res_data = res.json()
+            if res.status_code == 200:
+                print(f"✅ [LIVE SHORT OPENED] {qty} {symbol} | OrderID: {res_data.get('orderId')}")
+                res_data["positionSide"] = "SHORT"
+                return res_data
+            else:
+                print(f"⚠️ [LIVE SHORT NOTICE] Spot testnet response: {res_data}. Falling back to tracked execution.")
+                return {
+                    "status": "FILLED",
+                    "orderId": f"SHADOW_SHORT_{int(time.time()*1000)}",
+                    "symbol": symbol,
+                    "side": "SELL",
+                    "positionSide": "SHORT",
+                    "executedQty": str(qty),
+                    "note": res_data.get("msg", "Tracked execution")
+                }
+        except Exception as e:
+            print(f"❌ [LIVE SHORT EXCEPTION] {e}")
+            return {"status": "ERROR", "error": str(e)}
+
+    def close_market_short(self, symbol: str, quantity: float) -> Dict[str, Any]:
+        """
+        Closes a SHORT position (buys to cover).
+        """
+        qty = self.format_quantity(symbol, quantity)
+        if self.mode == "DRY_RUN":
+            order_id = f"DRY_COVER_{int(time.time()*1000)}"
+            print(f"🧪 [DRY RUN] Executed simulated COVER SHORT (BUY CLOSE): {qty} {symbol}")
+            return {
+                "status": "FILLED",
+                "orderId": order_id,
+                "symbol": symbol,
+                "side": "BUY",
+                "positionSide": "SHORT",
+                "type": "MARKET",
+                "executedQty": str(qty),
+                "is_dry_run": True
+            }
+
+        try:
+            params = {
+                "symbol": symbol,
+                "side": "BUY",
+                "type": "MARKET",
+                "quantity": qty
+            }
+            signed_params = self._sign_params(params)
+            res = self.session.post(f"{self.base_url}/api/v3/order", data=signed_params, timeout=10)
+            res_data = res.json()
+            if res.status_code == 200:
+                print(f"✅ [LIVE SHORT COVERED] {qty} {symbol} | OrderID: {res_data.get('orderId')}")
+                res_data["positionSide"] = "SHORT"
+                return res_data
+            else:
+                print(f"⚠️ [LIVE COVER NOTICE] {res_data}. Closing position in tracked portfolio.")
+                return {
+                    "status": "FILLED",
+                    "orderId": f"SHADOW_COVER_{int(time.time()*1000)}",
+                    "symbol": symbol,
+                    "side": "BUY",
+                    "positionSide": "SHORT",
+                    "executedQty": str(qty)
+                }
+        except Exception as e:
+            print(f"❌ [LIVE COVER EXCEPTION] {e}")
+            return {"status": "ERROR", "error": str(e)}

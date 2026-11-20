@@ -234,58 +234,91 @@ class LiveShadowRunner:
             if pd.to_datetime(latest_time, utc=True) <= pd.to_datetime(entry_time, utc=True):
                 continue
 
-            if len(df) >= 21:
-                prior_lows = df["low"].iloc[-21:-1]
-            else:
-                prior_lows = df["low"].iloc[:-1]
-
-            lower_channel_20 = float(prior_lows.min()) if not prior_lows.empty else float(latest_bar["low"])
-
+            side = trade.get("side", "LONG")
             bar_low = float(latest_bar["low"])
+            bar_high = float(latest_bar["high"])
             bar_close = float(latest_bar["close"])
             stop_loss = float(trade["stop_loss"])
+            entry_p = float(trade["entry_price"])
+            init_sl = float(trade.get("initial_stop_loss", trade["stop_loss"]))
 
             # Safeguard 3 (Option B): Breakeven Lock for 15M (move SL to entry when gain >= +1.0R)
             if tf == "15m" and not trade.get("breakeven_locked", False):
-                entry_p = float(trade["entry_price"])
-                init_sl = float(trade.get("initial_stop_loss", trade["stop_loss"]))
-                r_dist = entry_p - init_sl
-                if r_dist > 0 and bar_close >= entry_p + r_dist:
-                    trade["stop_loss"] = entry_p
-                    trade["breakeven_locked"] = True
-                    stop_loss = entry_p
-                    self._save_state()
-                    be_msg = (
-                        f"🛡️ <b>[BREAKEVEN LOCKED - 15M]</b>\n\n"
-                        f"• <b>Asset:</b> #{symbol} [15M]\n"
-                        f"• <b>Gain Reached:</b> <code>+1.0R</code> (Price: <code>${bar_close:,.2f}</code>)\n"
-                        f"• <b>New Stop Loss:</b> <code>${entry_p:,.2f}</code> (Breakeven)\n"
-                        f"<i>(Lệnh 15M đã khóa hòa vốn thành công, loại bỏ rủi ro thua lỗ!)</i>"
-                    )
-                    self.send_telegram_alert(be_msg)
-                    print(f"🛡️ [BREAKEVEN LOCKED] {symbol} [15M]: Stop Loss moved to Entry ${entry_p:.2f}")
+                if side == "LONG":
+                    r_dist = entry_p - init_sl
+                    if r_dist > 0 and bar_close >= entry_p + r_dist:
+                        trade["stop_loss"] = entry_p
+                        trade["breakeven_locked"] = True
+                        stop_loss = entry_p
+                        self._save_state()
+                        be_msg = (
+                            f"🛡️ <b>[BREAKEVEN LOCKED - 15M LONG]</b>\n\n"
+                            f"• <b>Asset:</b> #{symbol} [15M LONG]\n"
+                            f"• <b>Gain Reached:</b> <code>+1.0R</code> (Price: <code>${bar_close:,.2f}</code>)\n"
+                            f"• <b>New Stop Loss:</b> <code>${entry_p:,.2f}</code> (Breakeven)\n"
+                            f"<i>(Lệnh LONG 15M đã khóa hòa vốn thành công, loại bỏ rủi ro thua lỗ!)</i>"
+                        )
+                        self.send_telegram_alert(be_msg)
+                        print(f"🛡️ [BREAKEVEN LOCKED] {symbol} [15M LONG]: Stop Loss moved to Entry ${entry_p:.2f}")
+                else:  # SHORT
+                    r_dist = init_sl - entry_p
+                    if r_dist > 0 and bar_close <= entry_p - r_dist:
+                        trade["stop_loss"] = entry_p
+                        trade["breakeven_locked"] = True
+                        stop_loss = entry_p
+                        self._save_state()
+                        be_msg = (
+                            f"🛡️ <b>[BREAKEVEN LOCKED - 15M SHORT]</b>\n\n"
+                            f"• <b>Asset:</b> #{symbol} [15M SHORT]\n"
+                            f"• <b>Gain Reached:</b> <code>+1.0R</code> (Price: <code>${bar_close:,.2f}</code>)\n"
+                            f"• <b>New Stop Loss:</b> <code>${entry_p:,.2f}</code> (Breakeven)\n"
+                            f"<i>(Lệnh SHORT 15M đã khóa hòa vốn thành công, loại bỏ rủi ro thua lỗ!)</i>"
+                        )
+                        self.send_telegram_alert(be_msg)
+                        print(f"🛡️ [BREAKEVEN LOCKED] {symbol} [15M SHORT]: Stop Loss moved to Entry ${entry_p:.2f}")
 
             exit_reason = None
             exit_price = None
 
-            if bar_low <= stop_loss:
-                exit_reason = "STOP_LOSS"
-                exit_price = min(float(latest_bar["open"]), stop_loss)
-            elif bar_close < lower_channel_20:
-                exit_reason = "LOWER_CHANNEL"
-                exit_price = bar_close
+            if side == "LONG":
+                if len(df) >= 21:
+                    prior_lows = df["low"].iloc[-21:-1]
+                else:
+                    prior_lows = df["low"].iloc[:-1]
+                lower_channel_20 = float(prior_lows.min()) if not prior_lows.empty else float(latest_bar["low"])
+
+                if bar_low <= stop_loss:
+                    exit_reason = "STOP_LOSS"
+                    exit_price = min(float(latest_bar["open"]), stop_loss)
+                elif bar_close < lower_channel_20:
+                    exit_reason = "LOWER_CHANNEL"
+                    exit_price = bar_close
+            else:  # SHORT
+                if len(df) >= 21:
+                    prior_highs = df["high"].iloc[-21:-1]
+                else:
+                    prior_highs = df["high"].iloc[:-1]
+                upper_channel_20 = float(prior_highs.max()) if not prior_highs.empty else float(latest_bar["high"])
+
+                if bar_high >= stop_loss:
+                    exit_reason = "STOP_LOSS"
+                    exit_price = max(float(latest_bar["open"]), stop_loss)
+                elif bar_close > upper_channel_20:
+                    exit_reason = "UPPER_CHANNEL"
+                    exit_price = bar_close
 
             if exit_reason is not None and exit_price is not None:
                 initial_risk = trade["initial_dollar_risk"]
                 size = trade["size"]
                 entry_price = trade["entry_price"]
-                pnl = (exit_price - entry_price) * size
+                pnl = (exit_price - entry_price) * size if side == "LONG" else (entry_price - exit_price) * size
                 realized_r = pnl / initial_risk if initial_risk > 0 else 0.0
 
                 outcome_record = {
                     "event_type": "TRADE_OUTCOME",
                     "breakout_id": trade["breakout_id"],
                     "asset": symbol,
+                    "side": side,
                     "timeframe": tf,
                     "entry_time": entry_time,
                     "outcome_timestamp": latest_time,
@@ -300,8 +333,11 @@ class LiveShadowRunner:
                 }
 
                 if trade.get("ai_decision") == "PASS":
-                    sell_res = self.executor.place_market_sell(symbol, size)
-                    outcome_record["sell_order_res"] = sell_res
+                    if side == "LONG":
+                        exec_res = self.executor.place_market_sell(symbol, size)
+                    else:
+                        exec_res = self.executor.close_market_short(symbol, size)
+                    outcome_record["sell_order_res"] = exec_res
 
                 # Notify Dual Paper Portfolio
                 self.paper_portfolio.on_position_exit(symbol, latest_time, exit_price, exit_reason)
@@ -368,15 +404,32 @@ class LiveShadowRunner:
 
                 prior_highs = df["high"].iloc[-56:-1]
                 upper_channel = float(prior_highs.max())
+                prior_lows = df["low"].iloc[-56:-1]
+                lower_channel = float(prior_lows.min())
                 close_t = float(bar_t["close"])
 
+                # Check Long Breakout OR Short Breakdown
+                trigger_side = None
+                channel_level = None
                 if close_t > upper_channel:
+                    trigger_side = "LONG"
+                    channel_level = upper_channel
+                elif close_t < lower_channel:
+                    trigger_side = "SHORT"
+                    channel_level = lower_channel
+
+                if trigger_side is not None:
+                    sig_key = f"{symbol}_{iv}_{trigger_side}_{sig_time}"
+                    if sig_key in self.processed_signals:
+                        continue
+
                     self.processed_signals.add(sig_key)
 
                     features = self.feature_extractor.extract_features_at_t(
                         t_idx=t_idx,
                         df=df,
-                        btc_df=btc_df if symbol != "BTCUSDT" else None
+                        btc_df=btc_df if symbol != "BTCUSDT" else None,
+                        direction=trigger_side
                     )
 
                     eval_res = self.engine.evaluate_candidate(
@@ -384,13 +437,14 @@ class LiveShadowRunner:
                         asset=symbol,
                         breakout_id=sig_key,
                         features=features,
-                        baseline_signal="BUY",
+                        baseline_signal="BUY" if trigger_side == "LONG" else "SELL",
                         baseline_entry_price=close_t,
                         eventual_realized_r=None,
                         eventual_pnl=None,
                         outcome_timestamp=None
                     )
                     eval_res["timeframe"] = iv
+                    eval_res["side"] = trigger_side
 
                     # Safeguard 1 (Option B): Stricter AI Threshold for 15M (R >= 1.0)
                     tf_threshold = 1.0 if iv == "15m" else self.engine.threshold
@@ -413,16 +467,26 @@ class LiveShadowRunner:
 
                     order_res = None
                     if eval_res["ai_decision"] == "PASS":
-                        order_res = self.executor.place_market_buy(symbol, qty)
+                        if trigger_side == "LONG":
+                            order_res = self.executor.place_market_buy(symbol, qty)
+                        else:
+                            order_res = self.executor.place_market_short(symbol, qty)
+
+                    sl_price = (close_t - dollar_risk) if trigger_side == "LONG" else (close_t + dollar_risk)
+                    tp_2r = (close_t + 2.0 * dollar_risk) if trigger_side == "LONG" else (close_t - 2.0 * dollar_risk)
+                    tp_3r = (close_t + 3.0 * dollar_risk) if trigger_side == "LONG" else (close_t - 3.0 * dollar_risk)
 
                     self.active_trades[trade_key] = {
                         "breakout_id": sig_key,
                         "asset": symbol,
+                        "side": trigger_side,
                         "timeframe": iv,
                         "entry_time": sig_time,
                         "entry_price": close_t,
-                        "stop_loss": close_t - dollar_risk,
-                        "initial_stop_loss": close_t - dollar_risk,
+                        "stop_loss": sl_price,
+                        "initial_stop_loss": sl_price,
+                        "take_profit_2r": tp_2r,
+                        "take_profit_3r": tp_3r,
                         "initial_dollar_risk": qty * dollar_risk,
                         "breakeven_locked": False,
                         "size": qty,
@@ -438,29 +502,33 @@ class LiveShadowRunner:
                         entry_price=close_t,
                         atr=atr_t,
                         ai_decision=eval_res["ai_decision"],
-                        predicted_r=eval_res["ai_predicted_r"]
+                        predicted_r=eval_res["ai_predicted_r"],
+                        side=trigger_side
                     )
 
                     detections.append(eval_res)
 
+                    side_icon = "🟢 LONG (BUY)" if trigger_side == "LONG" else "🔴 SHORT (SELL)"
                     status_icon = "🟢 PASS (TRADE)" if eval_res["ai_decision"] == "PASS" else "🔴 VETO (AVOID)"
-                    print(f"\n🚨 [BREAKOUT SIGNAL DETECTED] [{iv.upper()}] {sig_time} | {symbol:<8}")
-                    print(f"   • Close: ${close_t:.2f} > Upper Channel: ${upper_channel:.2f}")
+                    print(f"\n🚨 [{trigger_side} SIGNAL DETECTED] [{iv.upper()}] {sig_time} | {symbol:<8}")
+                    print(f"   • Close: ${close_t:.2f} | 55-Channel: ${channel_level:.2f}")
                     print(f"   • Ridge Predicted R: {eval_res['ai_predicted_r']:>+7.3f}R (Threshold: {tf_threshold:>+7.3f}R)")
                     print(f"   • Decision: {status_icon}")
                     print(f"   • Auto-Execution ({self.executor.mode}): {qty} {symbol} (~${total_cost:.2f})")
 
                     signal_msg = (
-                        f"🚨 <b>[STAGE A BREAKOUT SIGNAL DETECTED - {iv.upper()}]</b>\n\n"
+                        f"🚨 <b>[STAGE A SIGNAL DETECTED - {iv.upper()} {side_icon}]</b>\n\n"
                         f"• <b>Asset:</b> #{symbol}\n"
+                        f"• <b>Direction:</b> <b>{side_icon}</b>\n"
                         f"• <b>Timeframe:</b> <code>{iv.upper()}</code>\n"
                         f"• <b>Candle Close:</b> <code>{sig_time}</code>\n"
-                        f"• <b>Close Price:</b> <code>${close_t:,.2f}</code> (Channel: <code>${upper_channel:,.2f}</code>)\n"
+                        f"• <b>Close Price:</b> <code>${close_t:,.2f}</code> (Channel: <code>${channel_level:,.2f}</code>)\n"
+                        f"• <b>Stop Loss:</b> <code>${sl_price:,.2f}</code> | <b>TP (+2R):</b> <code>${tp_2r:,.2f}</code>\n"
                         f"• <b>Ridge Predicted R:</b> <code>{eval_res['ai_predicted_r']:>+7.3f}R</code>\n"
                         f"• <b>Threshold:</b> <code>{tf_threshold:>+7.3f}R</code> (Mode: {'Strict 15M R>=1.0' if iv == '15m' else 'Macro/Intraday'})\n"
                         f"• <b>AI Filter Decision:</b> <b>{status_icon}</b>\n"
                         f"• <b>Execution:</b> <code>{self.executor.mode}</code> (Size: <code>{qty} {symbol}</code> ~ <code>${total_cost:.2f}</code>)\n\n"
-                        f"<i>(Option B: Dynamic Safety Gating Active)</i>"
+                        f"<i>(Bi-Directional Auto-Trading Active)</i>"
                     )
                     self.send_telegram_alert(signal_msg)
 

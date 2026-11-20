@@ -70,14 +70,17 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 if qty is not None:
                     qty = float(qty)
 
-                from manual_order import execute_buy, execute_sell
+                from manual_order import execute_buy, execute_sell, execute_short
 
                 if action == "buy":
                     success = execute_buy(symbol, qty, timeframe=timeframe)
                     res = {"success": success, "message": f"Executed BUY for {symbol} [{timeframe.upper()}]"}
+                elif action == "short":
+                    success = execute_short(symbol, qty, timeframe=timeframe)
+                    res = {"success": success, "message": f"Executed SHORT for {symbol} [{timeframe.upper()}]"}
                 elif action == "sell":
                     success = execute_sell(symbol, qty, reason="DASHBOARD_MANUAL_CLOSE")
-                    res = {"success": success, "message": f"Executed SELL for {symbol}"}
+                    res = {"success": success, "message": f"Executed CLOSE/SELL for {symbol}"}
                 else:
                     res = {"success": False, "message": f"Unknown action: {action}"}
 
@@ -160,17 +163,22 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     ).json()
                     if isinstance(res, list) and len(res) >= 56:
                         highs = [float(k[2]) for k in res[-56:-1]]
+                        lows = [float(k[3]) for k in res[-56:-1]]
                         upper = max(highs)
+                        lower = min(lows)
                         close = float(res[-1][4])
                         if s not in current_prices:
                             current_prices[s] = close
                         dist_pct = (close - upper) / upper * 100
+                        dist_lower_pct = (close - lower) / lower * 100
                         radars[iv].append({
                             "symbol": s,
                             "interval": iv,
                             "close": close,
                             "upper_channel": upper,
-                            "dist_pct": round(dist_pct, 2)
+                            "lower_channel": lower,
+                            "dist_pct": round(dist_pct, 2),
+                            "dist_lower_pct": round(dist_lower_pct, 2)
                         })
             except Exception:
                 pass
@@ -179,29 +187,40 @@ class DashboardHandler(BaseHTTPRequestHandler):
         enhanced_active_trades = []
         for trade_key, t in active_trades.items():
             sym = t.get("asset", trade_key.split("_")[0])
+            side = t.get("side", "LONG")
             tf = t.get("timeframe", "1h")
             curr_p = current_prices.get(sym, float(t.get("entry_price", 0)))
             entry_p = float(t.get("entry_price", curr_p))
             sz = float(t.get("size", 0))
-            unreal_pnl = (curr_p - entry_p) * sz
-            
-            sl = float(t.get("stop_loss", entry_p * 0.96))
-            dollar_risk_per_coin = max(0.0001, entry_p - sl)
-            tp_2r = round(entry_p + 2.0 * dollar_risk_per_coin, 2)
-            tp_3r = round(entry_p + 3.0 * dollar_risk_per_coin, 2)
+
+            if side == "LONG":
+                unreal_pnl = (curr_p - entry_p) * sz
+                sl = float(t.get("stop_loss", entry_p * 0.96))
+                dollar_risk_per_coin = max(0.0001, entry_p - sl)
+                tp_2r = float(t.get("take_profit_2r", round(entry_p + 2.0 * dollar_risk_per_coin, 2)))
+                tp_3r = float(t.get("take_profit_3r", round(entry_p + 3.0 * dollar_risk_per_coin, 2)))
+                sl_dist_pct = round((sl - curr_p) / curr_p * 100, 2) if curr_p > 0 else 0.0
+                tp_dist_pct = round((tp_2r - curr_p) / curr_p * 100, 2) if curr_p > 0 else 0.0
+            else:  # SHORT
+                unreal_pnl = (entry_p - curr_p) * sz
+                sl = float(t.get("stop_loss", entry_p * 1.04))
+                dollar_risk_per_coin = max(0.0001, sl - entry_p)
+                tp_2r = float(t.get("take_profit_2r", round(entry_p - 2.0 * dollar_risk_per_coin, 2)))
+                tp_3r = float(t.get("take_profit_3r", round(entry_p - 3.0 * dollar_risk_per_coin, 2)))
+                sl_dist_pct = round((curr_p - sl) / curr_p * 100, 2) if curr_p > 0 else 0.0
+                tp_dist_pct = round((curr_p - tp_2r) / curr_p * 100, 2) if curr_p > 0 else 0.0
+
             pos_value = round(sz * curr_p, 2)
             risk_usd = round(dollar_risk_per_coin * sz, 2)
-            reward_usd = round((tp_2r - entry_p) * sz, 2)
+            reward_usd = round(abs(tp_2r - entry_p) * sz, 2)
             
             init_risk = float(t.get("initial_dollar_risk", risk_usd))
             unreal_r = unreal_pnl / init_risk if init_risk > 0 else 0.0
 
-            sl_dist_pct = round((sl - curr_p) / curr_p * 100, 2) if curr_p > 0 else 0.0
-            tp_dist_pct = round((tp_2r - curr_p) / curr_p * 100, 2) if curr_p > 0 else 0.0
-
             enhanced_active_trades.append({
                 "trade_key": trade_key,
                 "symbol": sym,
+                "side": side,
                 "timeframe": tf,
                 "entry_time": t.get("entry_time"),
                 "entry_price": entry_p,
@@ -364,13 +383,13 @@ class DashboardHandler(BaseHTTPRequestHandler):
       </div>
       <div class="flex items-center space-x-2.5">
         <button onclick="triggerOrder('buy', 'ETHUSDT', '1h')" class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold py-1.5 px-3 rounded-lg transition shadow-md flex items-center space-x-1">
-          <span>🛒 Buy ETH (1H)</span>
+          <span>🟢 Long ETH (1H)</span>
         </button>
         <button onclick="triggerOrder('buy', 'SOLUSDT', '15m')" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold py-1.5 px-3 rounded-lg transition shadow-md flex items-center space-x-1">
-          <span>🛒 Buy SOL (15M)</span>
+          <span>🟢 Long SOL (15M)</span>
         </button>
-        <button onclick="triggerOrder('buy', 'BTCUSDT', '4h')" class="bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold py-1.5 px-3 rounded-lg transition shadow-md flex items-center space-x-1">
-          <span>🛒 Buy BTC (4H)</span>
+        <button onclick="triggerOrder('short', 'BTCUSDT', '1h')" class="bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold py-1.5 px-3 rounded-lg transition shadow-md flex items-center space-x-1">
+          <span>🔴 Short BTC (1H)</span>
         </button>
       </div>
     </div>
@@ -541,16 +560,22 @@ class DashboardHandler(BaseHTTPRequestHandler):
               <span class="font-bold text-white mono">#${r.symbol}</span>
               <span class="bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 text-[10px] px-1 rounded mono">${currentRadarTf.toUpperCase()}</span>
             </div>
-            <span class="text-slate-400 mono">$${r.close.toLocaleString()}</span>
+            <span class="text-white font-semibold mono">$${r.close.toLocaleString()}</span>
           </div>
-          <div class="flex justify-between items-center text-xs mt-2 text-slate-400">
-            <span>55-High: $${r.upper_channel.toLocaleString()}</span>
-            <span class="font-semibold ${r.dist_pct >= 0 ? 'text-emerald-400' : 'text-slate-400'} mono">
+          <div class="flex justify-between items-center text-[11px] mt-2 text-slate-400">
+            <span>🟢 Đỉnh 55 (Long): $${(r.upper_channel || 0).toLocaleString()}</span>
+            <span class="font-semibold ${r.dist_pct >= -0.5 ? 'text-amber-400' : 'text-slate-400'} mono">
               ${r.dist_pct > 0 ? '+' : ''}${r.dist_pct}%
             </span>
           </div>
-          <div class="w-full bg-slate-700/40 rounded-full h-1.5 mt-2 overflow-hidden">
-            <div class="bg-indigo-500 h-1.5 rounded-full" style="width: ${Math.max(5, 100 + r.dist_pct * 3)}%"></div>
+          <div class="flex justify-between items-center text-[11px] mt-1 text-slate-400">
+            <span>🔴 Đáy 55 (Short): $${(r.lower_channel || 0).toLocaleString()}</span>
+            <span class="font-semibold ${r.dist_lower_pct <= 0.5 ? 'text-rose-400 font-bold' : 'text-slate-400'} mono">
+              ${r.dist_lower_pct !== undefined ? (r.dist_lower_pct > 0 ? '+' : '') + r.dist_lower_pct + '%' : ''}
+            </span>
+          </div>
+          <div class="w-full bg-slate-700/40 rounded-full h-1.5 mt-2 overflow-hidden flex">
+            <div class="bg-indigo-500 h-1.5 rounded-full" style="width: ${Math.max(5, Math.min(100, 100 + r.dist_pct * 3))}%"></div>
           </div>
         </div>
       `).join('');
@@ -682,6 +707,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
               <td class="py-2.5 font-bold text-amber-300">
                 <span>#${t.symbol}</span>
                 <span class="bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-1.5 py-0.5 rounded text-[10px] mono ml-1.5">${t.timeframe ? t.timeframe.toUpperCase() : '1H'}</span>
+                <span class="${t.side === 'SHORT' ? 'bg-rose-500/20 text-rose-300 border-rose-500/30' : 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'} border px-1.5 py-0.5 rounded text-[10px] font-bold mono ml-1">${t.side || 'LONG'}</span>
               </td>
               <td class="text-slate-300">$${t.entry_price.toLocaleString()}</td>
               <td class="font-semibold text-white">$${t.current_price.toLocaleString()}</td>

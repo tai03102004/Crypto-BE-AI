@@ -100,12 +100,14 @@ class DualPaperPortfolio:
         entry_price: float,
         atr: float,
         ai_decision: str,
-        predicted_r: float
+        predicted_r: float,
+        side: str = "LONG"
     ):
         """
-        Processes a newly detected Donchian 55 breakout trigger across both portfolios.
+        Processes a newly detected Donchian 55 trigger across both portfolios (supports LONG & SHORT).
         """
         dollar_risk_unit = 2.0 * atr if atr > 0 else entry_price * 0.03
+        sl_price = (entry_price - dollar_risk_unit) if side == "LONG" else (entry_price + dollar_risk_unit)
 
         # 1. Process Baseline Portfolio (Always takes trade)
         if symbol not in self.baseline["active_positions"]:
@@ -117,10 +119,11 @@ class DualPaperPortfolio:
                 self.baseline["cash"] -= cost
                 self.baseline["active_positions"][symbol] = {
                     "symbol": symbol,
+                    "side": side,
                     "entry_time": timestamp,
                     "entry_price": entry_price,
                     "size": size,
-                    "stop_loss": entry_price - dollar_risk_unit,
+                    "stop_loss": sl_price,
                     "dollar_risk": risk_budget,
                     "ai_decision": ai_decision,
                     "predicted_r": predicted_r
@@ -137,10 +140,11 @@ class DualPaperPortfolio:
                     self.ai_filtered["cash"] -= cost
                     self.ai_filtered["active_positions"][symbol] = {
                         "symbol": symbol,
+                        "side": side,
                         "entry_time": timestamp,
                         "entry_price": entry_price,
                         "size": size,
-                        "stop_loss": entry_price - dollar_risk_unit,
+                        "stop_loss": sl_price,
                         "dollar_risk": risk_budget,
                         "ai_decision": ai_decision,
                         "predicted_r": predicted_r
@@ -156,12 +160,13 @@ class DualPaperPortfolio:
         exit_reason: str
     ):
         """
-        Handles trade exit (Stop loss or Lower channel trailing stop) across portfolios.
+        Handles trade exit (Stop loss or channel trailing stop) across portfolios.
         """
         # 1. Exit from Baseline
         if symbol in self.baseline["active_positions"]:
             pos = self.baseline["active_positions"].pop(symbol)
-            pnl = (exit_price - pos["entry_price"]) * pos["size"]
+            is_short = (pos.get("side") == "SHORT")
+            pnl = (pos["entry_price"] - exit_price) * pos["size"] if is_short else (exit_price - pos["entry_price"]) * pos["size"]
             self.baseline["cash"] += (pos["size"] * pos["entry_price"]) + pnl
             self.baseline["realized_pnl"] += pnl
             self.baseline["total_trades"] += 1
@@ -190,7 +195,8 @@ class DualPaperPortfolio:
         # 2. Exit from AI-Filtered
         if symbol in self.ai_filtered["active_positions"]:
             pos = self.ai_filtered["active_positions"].pop(symbol)
-            pnl = (exit_price - pos["entry_price"]) * pos["size"]
+            is_short = (pos.get("side") == "SHORT")
+            pnl = (pos["entry_price"] - exit_price) * pos["size"] if is_short else (exit_price - pos["entry_price"]) * pos["size"]
             self.ai_filtered["cash"] += (pos["size"] * pos["entry_price"]) + pnl
             self.ai_filtered["realized_pnl"] += pnl
             self.ai_filtered["total_trades"] += 1
@@ -214,33 +220,33 @@ class DualPaperPortfolio:
 
     def update_mark_to_market(self, current_prices: Dict[str, float]):
         """
-        Updates current equity, unrealized PnL, peak equity, and drawdown.
+        Updates current equity, unrealized PnL, peak equity, and drawdown for both LONG & SHORT.
         """
         # Baseline Equity
-        baseline_unrealized = 0.0
+        baseline_positions_val = 0.0
         for sym, pos in self.baseline["active_positions"].items():
             curr_p = current_prices.get(sym, pos["entry_price"])
-            baseline_unrealized += (curr_p - pos["entry_price"]) * pos["size"]
+            cost = pos["size"] * pos["entry_price"]
+            is_short = (pos.get("side") == "SHORT")
+            unrealized = (pos["entry_price"] - curr_p) * pos["size"] if is_short else (curr_p - pos["entry_price"]) * pos["size"]
+            baseline_positions_val += cost + unrealized
 
-        self.baseline["equity"] = self.baseline["cash"] + sum(
-            pos["size"] * current_prices.get(sym, pos["entry_price"])
-            for sym, pos in self.baseline["active_positions"].items()
-        )
+        self.baseline["equity"] = self.baseline["cash"] + baseline_positions_val
         if self.baseline["equity"] > self.baseline["peak_equity"]:
             self.baseline["peak_equity"] = self.baseline["equity"]
         dd_base = (self.baseline["peak_equity"] - self.baseline["equity"]) / self.baseline["peak_equity"] * 100
         self.baseline["max_drawdown_pct"] = max(self.baseline["max_drawdown_pct"], dd_base)
 
         # AI-Filtered Equity
-        ai_unrealized = 0.0
+        ai_positions_val = 0.0
         for sym, pos in self.ai_filtered["active_positions"].items():
             curr_p = current_prices.get(sym, pos["entry_price"])
-            ai_unrealized += (curr_p - pos["entry_price"]) * pos["size"]
+            cost = pos["size"] * pos["entry_price"]
+            is_short = (pos.get("side") == "SHORT")
+            unrealized = (pos["entry_price"] - curr_p) * pos["size"] if is_short else (curr_p - pos["entry_price"]) * pos["size"]
+            ai_positions_val += cost + unrealized
 
-        self.ai_filtered["equity"] = self.ai_filtered["cash"] + sum(
-            pos["size"] * current_prices.get(sym, pos["entry_price"])
-            for sym, pos in self.ai_filtered["active_positions"].items()
-        )
+        self.ai_filtered["equity"] = self.ai_filtered["cash"] + ai_positions_val
         if self.ai_filtered["equity"] > self.ai_filtered["peak_equity"]:
             self.ai_filtered["peak_equity"] = self.ai_filtered["equity"]
         dd_ai = (self.ai_filtered["peak_equity"] - self.ai_filtered["equity"]) / self.ai_filtered["peak_equity"] * 100
